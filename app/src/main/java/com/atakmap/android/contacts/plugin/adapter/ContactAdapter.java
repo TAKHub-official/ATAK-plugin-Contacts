@@ -120,11 +120,14 @@ public class ContactAdapter extends RecyclerView.Adapter<ContactAdapter.ViewHold
             Log.d(TAG, "Updating contacts list with " + 
                  (newContacts != null ? newContacts.size() : 0) + " contacts");
             
+            // Clear both lists
             contactList.clear();
             
-            if (newContacts != null && !newContacts.isEmpty()) {
+            if (newContacts != null) {
                 contactList.addAll(newContacts);
-                contactListFull = new ArrayList<>(newContacts); // Update the full list copy
+                
+                // Create a deep copy of the contacts list
+                contactListFull = new ArrayList<>(newContacts);
                 
                 Log.d(TAG, "Updated contactList with " + contactList.size() + 
                      " items and contactListFull with " + contactListFull.size() + " items");
@@ -150,14 +153,9 @@ public class ContactAdapter extends RecyclerView.Adapter<ContactAdapter.ViewHold
                  ", full list size: " + (contactListFull != null ? contactListFull.size() : 0));
                 
             // Make sure we have the full list to filter from
-            if (contactListFull == null || contactListFull.isEmpty()) {
-                Log.d(TAG, "contactListFull is null or empty, creating new list");
-                if (contactList != null && !contactList.isEmpty()) {
-                    contactListFull = new ArrayList<>(contactList);
-                } else {
-                    contactListFull = new ArrayList<>();
-                }
-                Log.d(TAG, "contactListFull now has " + contactListFull.size() + " items");
+            if (contactListFull == null) {
+                Log.d(TAG, "contactListFull is null, creating new empty list");
+                contactListFull = new ArrayList<>();
             }
             
             // Clear the current display list

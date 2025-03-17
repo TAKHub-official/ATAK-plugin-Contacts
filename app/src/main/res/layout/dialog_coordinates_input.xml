@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Enter Coordinates"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Latitude"
+        android:textSize="16sp"
+        android:layout_marginTop="8dp" />
+
+    <EditText
+        android:id="@+id/et_dialog_latitude"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Enter latitude (e.g. 52.520008)"
+        android:textColorHint="#AAAAAA"
+        android:textColor="#FFFFFF"
+        android:inputType="numberDecimal|numberSigned"
+        android:padding="12dp"
+        android:background="@drawable/edit_text_dark_background"
+        android:layout_marginTop="4dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Longitude"
+        android:textSize="16sp"
+        android:layout_marginTop="16dp" />
+
+    <EditText
+        android:id="@+id/et_dialog_longitude"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Enter longitude (e.g. 13.404954)"
+        android:textColorHint="#AAAAAA"
+        android:textColor="#FFFFFF"
+        android:inputType="numberDecimal|numberSigned"
+        android:padding="12dp"
+        android:background="@drawable/edit_text_dark_background"
+        android:layout_marginTop="4dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="24dp">
+
+        <Button
+            android:id="@+id/btn_dialog_cancel"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:text="Cancel"
+            android:textColor="#FFFFFF"
+            android:padding="12dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/btn_dark" />
+
+        <Button
+            android:id="@+id/btn_dialog_save"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:text="Save"
+            android:textColor="#FFFFFF"
+            android:padding="12dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/btn_gray" />
+    </LinearLayout>
+</LinearLayout> 

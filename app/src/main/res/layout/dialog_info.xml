@@ -1,62 +1,84 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:padding="16dp">
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Contacts Plugin"
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:gravity="center"
-        android:layout_marginBottom="16dp" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Version:"
-        android:textStyle="bold"
-        android:layout_marginTop="8dp" />
-
-    <TextView
-        android:id="@+id/tv_version"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="1.1.0"
-        android:layout_marginBottom="8dp" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Publisher:"
-        android:textStyle="bold"
-        android:layout_marginTop="8dp" />
-
-    <TextView
-        android:id="@+id/tv_publisher"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="TAKHub"
-        android:layout_marginBottom="16dp" />
+    android:layout_height="wrap_content">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center"
-        android:layout_marginTop="16dp">
-        
-        <Button
-            android:id="@+id/btn_close"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:text="Close"
-            android:background="@drawable/btn_gray"
-            android:textColor="#FFFFFF"
-            android:paddingStart="24dp"
-            android:paddingEnd="24dp" />
-    </LinearLayout>
+        android:orientation="vertical"
+        android:padding="16dp">
 
-</LinearLayout> 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Contacts Plugin"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Version:"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp" />
+
+        <TextView
+            android:id="@+id/tv_version"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="1.2.0"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Publisher:"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp" />
+
+        <TextView
+            android:id="@+id/tv_publisher"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="TAKHub"
+            android:textColor="#4285F4"
+            android:clickable="true"
+            android:focusable="true"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Features &amp; Usage:"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="• Add contacts with name, phone number, notes, and location data\n\n• Search for contacts by name\n\n• View contact details by tapping on a contact\n\n• Call contacts directly by tapping on their phone number\n\n• Copy phone numbers by long-pressing on them\n\n• Add location data to contacts using current location or manual coordinates\n\n• View contact locations on the ATAK map\n\n• Copy coordinates by long-pressing on them or using the Copy Coordinates button\n\n• Edit or delete contacts from the detail view"
+            android:layout_marginBottom="16dp"
+            android:lineSpacingExtra="4dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:layout_marginTop="16dp">
+            
+            <Button
+                android:id="@+id/btn_close"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:text="Close"
+                android:background="@drawable/btn_gray"
+                android:textColor="#FFFFFF"
+                android:paddingStart="24dp"
+                android:paddingEnd="24dp" />
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView> 

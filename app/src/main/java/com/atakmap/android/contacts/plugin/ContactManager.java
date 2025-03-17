@@ -15,6 +15,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.ImageButton;
@@ -27,9 +28,20 @@ import com.atakmap.android.contacts.plugin.adapter.ContactAdapter;
 import com.atakmap.android.contacts.plugin.db.DatabaseHelper;
 import com.atakmap.android.contacts.plugin.model.Contact;
 import com.atakmap.android.maps.MapView;
+import com.atakmap.android.maps.Marker;
 
 import java.util.ArrayList;
 import java.util.List;
+
+// Neue Imports für Standortfunktionalität
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationManager;
+import android.os.Build;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+import com.atakmap.coremap.maps.coords.GeoPoint;
 
 /**
  * Manager-Klasse für Kontakte, der die UI- und Datenbankoperationen koordiniert
@@ -44,6 +56,11 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
     private ContactAdapter adapter;
     private TextView emptyView;
     private final List<Contact> contactList = new ArrayList<>();
+    
+    // Temporäre Variablen für Standortinformationen während der Kontakterstellung
+    private Double tempLatitude;
+    private Double tempLongitude;
+    private boolean hasLocationPermission = false;
     
     /**
      * Konstruktor für den ContactManager
@@ -191,16 +208,6 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                 return;
             }
             
-            // Clear any search text
-            try {
-                EditText searchEditText = mainView.findViewById(R.id.et_search_contacts);
-                if (searchEditText != null) {
-                    searchEditText.setText("");
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error resetting search field: " + e.getMessage(), e);
-            }
-            
             // Get fresh contacts from database
             contactList.clear();
             List<Contact> contacts = dbHelper.getAllContacts();
@@ -267,204 +274,613 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
      * Zeigt den Dialog zum Hinzufügen eines neuen Kontakts
      */
     private void showAddContactDialog() {
-        showContactDialog(null);
-    }
-    
-    /**
-     * Zeigt Dialog zum Hinzufügen oder Bearbeiten eines Kontakts
-     * @param contact Wenn nicht null, wird der Kontakt bearbeitet, ansonsten wird ein neuer erstellt
-     */
-    private void showContactDialog(final Contact contact) {
         try {
-            final boolean isEdit = contact != null;
+            Log.d(TAG, "Showing add contact dialog");
             
-            // ATAK MapView Context für Dialoge verwenden
-            Context mapViewContext = MapView.getMapView().getContext();
-            AlertDialog.Builder builder = new AlertDialog.Builder(mapViewContext);
+            // Verwende den MapView-Kontext für den Dialog, da dieser ein gültiger Activity-Kontext ist
+            MapView mapView = MapView.getMapView();
+            if (mapView == null) {
+                Log.e(TAG, "MapView is null");
+                Toast.makeText(pluginContext, "Error: Could not access MapView", Toast.LENGTH_SHORT).show();
+                return;
+            }
             
-            // Dialog-View laden
-            View dialogView = PluginLayoutInflater.inflate(pluginContext, R.layout.dialog_add_edit_contact, null);
+            final Context dialogContext = mapView.getContext();
+            if (dialogContext == null) {
+                Log.e(TAG, "MapView context is null");
+                Toast.makeText(pluginContext, "Error: Could not create dialog context", Toast.LENGTH_SHORT).show();
+                return;
+            }
             
-            // UI-Elemente initialisieren
-            TextView titleView = dialogView.findViewById(R.id.tv_dialog_title);
-            EditText nameEdit = dialogView.findViewById(R.id.et_name);
-            EditText countryCodeEdit = dialogView.findViewById(R.id.et_country_code);
-            EditText phoneEdit = dialogView.findViewById(R.id.et_phone);
-            EditText notesEdit = dialogView.findViewById(R.id.et_notes);
+            // Stelle sicher, dass der Dialog auf dem UI-Thread erstellt wird
+            mapView.post(() -> {
+                try {
+                    // Dialog-Layout inflaten
+                    Log.d(TAG, "Inflating dialog layout");
+                    AlertDialog.Builder builder = new AlertDialog.Builder(dialogContext);
+                    View dialogView;
+                    try {
+                        dialogView = LayoutInflater.from(pluginContext).inflate(R.layout.dialog_add_edit_contact, null);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error inflating dialog layout: " + e.getMessage(), e);
+                        Toast.makeText(dialogContext, "Error: Could not create dialog layout", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    
+                    builder.setView(dialogView);
+                    
+                    // UI-Elemente referenzieren mit Fehlerprüfung
+                    Log.d(TAG, "Finding UI elements");
+                    EditText nameEditText = dialogView.findViewById(R.id.et_contact_name);
+                    if (nameEditText == null) {
+                        Log.e(TAG, "Could not find et_contact_name");
+                        Toast.makeText(dialogContext, "Error: Dialog layout is incomplete", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    
+                    EditText phoneEditText = dialogView.findViewById(R.id.et_contact_phone);
+                    EditText notesEditText = dialogView.findViewById(R.id.et_contact_notes);
             Button cancelButton = dialogView.findViewById(R.id.btn_cancel);
             Button saveButton = dialogView.findViewById(R.id.btn_save);
             
-            // Titel anpassen je nach Modus (Hinzufügen/Bearbeiten)
-            if (isEdit) {
-                titleView.setText("Edit Contact");
-                nameEdit.setText(contact.getName());
-                
-                // Telefonnummer in Ländervorwahl und Nummer aufteilen
-                String phoneNumber = contact.getPhoneNumber();
-                if (phoneNumber != null && phoneNumber.startsWith("+")) {
-                    // Finde das erste Leerzeichen oder den ersten Nicht-Ziffern-Charakter nach dem +
-                    int spaceIndex = -1;
-                    for (int i = 1; i < phoneNumber.length(); i++) {
-                        if (!Character.isDigit(phoneNumber.charAt(i))) {
-                            spaceIndex = i;
-                            break;
-                        }
+                    // Standort-UI-Elemente
+                    Button currentLocationButton = dialogView.findViewById(R.id.btn_current_location);
+                    Button enterCoordinatesButton = dialogView.findViewById(R.id.btn_enter_coordinates);
+                    LinearLayout coordinatesLayout = dialogView.findViewById(R.id.layout_coordinates);
+                    EditText latitudeEditText = dialogView.findViewById(R.id.et_latitude);
+                    EditText longitudeEditText = dialogView.findViewById(R.id.et_longitude);
+                    Button clearLocationButton = dialogView.findViewById(R.id.btn_clear_location);
+                    
+                    // Prüfen, ob alle wichtigen UI-Elemente gefunden wurden
+                    if (saveButton == null || cancelButton == null) {
+                        Log.e(TAG, "Could not find essential buttons in dialog");
+                        Toast.makeText(dialogContext, "Error: Dialog layout is incomplete", Toast.LENGTH_SHORT).show();
+                        return;
                     }
                     
-                    if (spaceIndex > 1) {
-                        // Teile die Nummer in Ländervorwahl und Telefonnummer
-                        countryCodeEdit.setText(phoneNumber.substring(0, spaceIndex));
-                        phoneEdit.setText(phoneNumber.substring(spaceIndex).trim());
+                    // Temporäre Standortvariablen zurücksetzen
+                    tempLatitude = null;
+                    tempLongitude = null;
+                    
+                    // Dialog erstellen
+                    Log.d(TAG, "Creating dialog");
+                    final AlertDialog dialog = builder.create();
+                    
+                    // Aktuellen Standort-Button
+                    if (currentLocationButton != null) {
+                        currentLocationButton.setOnClickListener(v -> {
+                            try {
+                                getCurrentLocation();
+                                if (tempLatitude != null && tempLongitude != null && coordinatesLayout != null) {
+                                    // Koordinaten anzeigen
+                                    coordinatesLayout.setVisibility(View.VISIBLE);
+                                    if (latitudeEditText != null) latitudeEditText.setText(String.valueOf(tempLatitude));
+                                    if (longitudeEditText != null) longitudeEditText.setText(String.valueOf(tempLongitude));
                     } else {
-                        // Wenn kein Leerzeichen gefunden wurde, zeige die gesamte Nummer im Telefonnummernfeld
-                        countryCodeEdit.setText("+");
-                        phoneEdit.setText(phoneNumber.substring(1));
+                                    Toast.makeText(dialogContext, "Could not get current location", Toast.LENGTH_SHORT).show();
+                                }
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error in current location button click: " + e.getMessage(), e);
+                            }
+                        });
                     }
-                } else {
-                    // Wenn keine Ländervorwahl vorhanden ist, setze Standardwert
-                    countryCodeEdit.setText("+49");
-                    phoneEdit.setText(phoneNumber);
-                }
-                
-                notesEdit.setText(contact.getNotes());
+                    
+                    // Koordinaten eingeben-Button
+                    if (enterCoordinatesButton != null) {
+                        enterCoordinatesButton.setOnClickListener(v -> {
+                            try {
+                                showCoordinatesInputDialog(coordinates -> {
+                                    try {
+                                        if (coordinates != null && coordinates.length == 2) {
+                                            tempLatitude = coordinates[0];
+                                            tempLongitude = coordinates[1];
+                                            
+                                            // Koordinaten anzeigen
+                                            if (coordinatesLayout != null) {
+                                                coordinatesLayout.setVisibility(View.VISIBLE);
+                                                if (latitudeEditText != null) latitudeEditText.setText(String.valueOf(tempLatitude));
+                                                if (longitudeEditText != null) longitudeEditText.setText(String.valueOf(tempLongitude));
+                                            }
+                                        }
+                                    } catch (Exception e) {
+                                        Log.e(TAG, "Error processing coordinates: " + e.getMessage(), e);
+                                    }
+                                });
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error showing coordinates input dialog: " + e.getMessage(), e);
+                            }
+                        });
+                    }
+                    
+                    // Standort löschen-Button
+                    if (clearLocationButton != null && coordinatesLayout != null) {
+                        clearLocationButton.setOnClickListener(v -> {
+                            tempLatitude = null;
+                            tempLongitude = null;
+                            coordinatesLayout.setVisibility(View.GONE);
+                        });
+                    }
+                    
+                    // Koordinaten-Felder überwachen
+                    if (latitudeEditText != null) {
+                        latitudeEditText.addTextChangedListener(new android.text.TextWatcher() {
+                            @Override
+                            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                            
+                            @Override
+                            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+                            
+                            @Override
+                            public void afterTextChanged(android.text.Editable s) {
+                                try {
+                                    if (!TextUtils.isEmpty(s)) {
+                                        tempLatitude = Double.parseDouble(s.toString());
             } else {
-                titleView.setText("Add Contact");
-                // Standardwert für Ländervorwahl setzen
-                countryCodeEdit.setText("+49");
-            }
-            
-            builder.setView(dialogView);
-            final AlertDialog dialog = builder.create();
-            
-            // Abbrechen-Button
+                                        tempLatitude = null;
+                                    }
+                                } catch (NumberFormatException e) {
+                                    tempLatitude = null;
+                                }
+                            }
+                        });
+                    }
+                    
+                    if (longitudeEditText != null) {
+                        longitudeEditText.addTextChangedListener(new android.text.TextWatcher() {
+                            @Override
+                            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                            
+                            @Override
+                            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+                            
+                            @Override
+                            public void afterTextChanged(android.text.Editable s) {
+                                try {
+                                    if (!TextUtils.isEmpty(s)) {
+                                        tempLongitude = Double.parseDouble(s.toString());
+                                    } else {
+                                        tempLongitude = null;
+                                    }
+                                } catch (NumberFormatException e) {
+                                    tempLongitude = null;
+                                }
+                            }
+                        });
+                    }
+                    
+                    // Cancel-Button
             cancelButton.setOnClickListener(v -> dialog.dismiss());
             
-            // Speichern-Button
+                    // Save-Button
             saveButton.setOnClickListener(v -> {
-                String name = nameEdit.getText().toString().trim();
-                String countryCode = countryCodeEdit.getText().toString().trim();
-                String phoneLocal = phoneEdit.getText().toString().trim();
-                String notes = notesEdit.getText().toString().trim();
-                
-                // Validierung
+                        try {
+                            // Eingaben validieren
+                            String name = nameEditText.getText().toString().trim();
+                            String phone = phoneEditText != null ? phoneEditText.getText().toString().trim() : "";
+                            String notes = notesEditText != null ? notesEditText.getText().toString().trim() : "";
+                            
                 if (TextUtils.isEmpty(name)) {
-                    Toast.makeText(mapViewContext, "Please enter a name", Toast.LENGTH_SHORT).show();
+                                Toast.makeText(dialogContext, "Please enter a name", Toast.LENGTH_SHORT).show();
                     return;
                 }
                 
-                // Sicherstellen, dass die Ländervorwahl mit + beginnt
-                if (!countryCode.startsWith("+")) {
-                    countryCode = "+" + countryCode;
-                }
-                
-                // Kombiniere Ländervorwahl und Telefonnummer
-                String fullPhoneNumber = countryCode + " " + phoneLocal;
-                
-                Log.d(TAG, "Attempting to save contact - Name: " + name + ", Phone: " + fullPhoneNumber);
-                
-                try {
-                    if (isEdit) {
-                        // Kontakt aktualisieren
-                        contact.setName(name);
-                        contact.setPhoneNumber(fullPhoneNumber);
-                        contact.setNotes(notes);
-                        Log.d(TAG, "Updating existing contact with ID: " + contact.getId());
-                        int result = dbHelper.updateContact(contact);
-                        Log.d(TAG, "Contact updated, rows affected: " + result);
-                        
-                        if (result > 0) {
-                            // Show success message
-                            Toast.makeText(mapViewContext, "Contact updated", Toast.LENGTH_SHORT).show();
+                            // Debug-Ausgabe für Standortdaten
+                            Log.d(TAG, "Saving contact with location data - tempLatitude: " + tempLatitude + ", tempLongitude: " + tempLongitude);
                             
-                            // Reload contacts to refresh the list
-                            loadContacts();
+                            // Kontakt erstellen
+                            Contact newContact = new Contact(name, phone, notes);
                             
-                            // Close the dialog
-                            dialog.dismiss();
-                        } else {
-                            Log.e(TAG, "Failed to update contact, no rows affected");
-                            Toast.makeText(mapViewContext, "Failed to update contact", Toast.LENGTH_SHORT).show();
-                            return; // Don't dismiss dialog on failure
-                        }
-                    } else {
-                        // Neuen Kontakt erstellen
-                        Contact newContact = new Contact(name, fullPhoneNumber, notes);
-                        
-                        // Kontakt in Datenbank speichern
-                        long id = dbHelper.addContact(newContact);
-                        
-                        if (id > 0) {
-                            newContact.setId(id);
-                            
-                            // Don't directly add to contactList, we'll reload to ensure consistency
-                            Log.d(TAG, "Contact added successfully with ID: " + id);
-                            
-                            // Show success message
-                            Toast.makeText(mapViewContext, "Contact added", Toast.LENGTH_SHORT).show();
-                            
-                            // Reload contacts to refresh the list
-                            loadContacts();
-                            
-                            // Close the dialog
-                            dialog.dismiss();
-                            return;
-                        } else {
-                            Log.e(TAG, "Failed to add contact, ID returned: " + id);
-                            
-                            // Alternative approach if the first method fails
-                            try {
-                                SQLiteDatabase db = dbHelper.getWritableDatabase();
-                                if (db != null && db.isOpen()) {
-                                    ContentValues values = new ContentValues();
-                                    values.put(DatabaseHelper.KEY_NAME, name);
-                                    values.put(DatabaseHelper.KEY_PHONE, fullPhoneNumber);
-                                    values.put(DatabaseHelper.KEY_NOTES, notes);
-                                    
-                                    id = db.insert(DatabaseHelper.TABLE_CONTACTS, null, values);
-                                    
-                                    if (id > 0) {
-                                        newContact.setId(id);
-                                        Log.d(TAG, "Contact added with alternative method, ID: " + id);
-                                        
-                                        // Show success message
-                                        Toast.makeText(mapViewContext, "Contact added with alternative method", Toast.LENGTH_SHORT).show();
-                                        
-                                        // Reload contacts to refresh the list
-                                        loadContacts();
-                                        
-                                        // Close the dialog
-                                        dialog.dismiss();
-                                        return;
-                                    } else {
-                                        Toast.makeText(mapViewContext, "Failed to add contact", Toast.LENGTH_SHORT).show();
-                                        return; // Don't dismiss dialog on failure
-                                    }
-                                } else {
-                                    Log.e(TAG, "Database is not accessible in alternative approach");
-                                    Toast.makeText(mapViewContext, "Failed to add contact: Database not accessible", Toast.LENGTH_SHORT).show();
-                                    return; // Don't dismiss dialog on failure
-                                }
-                            } catch (Exception ex) {
-                                Log.e(TAG, "Error in alternative approach: " + ex.getMessage(), ex);
-                                Toast.makeText(mapViewContext, "Failed to add contact: " + ex.getMessage(), Toast.LENGTH_SHORT).show();
-                                return; // Don't dismiss dialog on failure
+                            // Standort separat setzen, wenn vorhanden
+                            if (tempLatitude != null && tempLongitude != null) {
+                                newContact.setLocation(tempLatitude, tempLongitude);
+                                Log.d(TAG, "Setting location: " + tempLatitude + ", " + tempLongitude);
+                                Log.d(TAG, "Contact has location: " + newContact.hasLocation());
                             }
+                            
+                            // Kontakt zur Datenbank hinzufügen
+                            Log.d(TAG, "Adding contact to database: " + newContact.toString());
+                            long id = dbHelper.addContact(newContact);
+                            Log.d(TAG, "Database returned ID: " + id);
+                            
+                            if (id != -1) {
+                                // Lade Kontakte neu, um die Liste zu aktualisieren
+                                loadContacts();
+                                
+                                dialog.dismiss();
+                                Toast.makeText(dialogContext, "Contact added successfully", Toast.LENGTH_SHORT).show();
+                            } else {
+                                Toast.makeText(dialogContext, "Failed to add contact", Toast.LENGTH_SHORT).show();
+                            }
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error saving contact: " + e.getMessage(), e);
+                            Toast.makeText(dialogContext, "Error saving contact: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                         }
+                    });
+                    
+                    Log.d(TAG, "Showing dialog");
+                    dialog.show();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in UI thread showing dialog: " + e.getMessage(), e);
+                    Toast.makeText(dialogContext, "Error showing dialog: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error showing add contact dialog: " + e.getMessage(), e);
+            try {
+                // Versuche, eine detailliertere Fehlermeldung anzuzeigen
+                Context context = MapView.getMapView().getContext();
+                Toast.makeText(context, "Error showing dialog: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            } catch (Exception ex) {
+                // Fallback, wenn alles andere fehlschlägt
+                Log.e(TAG, "Could not show error toast: " + ex.getMessage(), ex);
+            }
+        }
+    }
+    
+    /**
+     * Zeigt den Dialog zum Bearbeiten eines Kontakts
+     */
+    public void showEditContactDialog(Contact contact) {
+        try {
+            // Verwende den MapView-Kontext für den Dialog
+            MapView mapView = MapView.getMapView();
+            if (mapView == null) {
+                Log.e(TAG, "MapView is null");
+                Toast.makeText(pluginContext, "Error: Could not access MapView", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            
+            final Context dialogContext = mapView.getContext();
+            if (dialogContext == null) {
+                Log.e(TAG, "MapView context is null");
+                Toast.makeText(pluginContext, "Error: Could not create dialog context", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            
+            // Stelle sicher, dass der Dialog auf dem UI-Thread erstellt wird
+            mapView.post(() -> {
+                try {
+                    // Dialog-Layout inflaten
+                    AlertDialog.Builder builder = new AlertDialog.Builder(dialogContext);
+                    View dialogView = LayoutInflater.from(pluginContext).inflate(R.layout.dialog_add_edit_contact, null);
+                    builder.setView(dialogView);
+                    
+                    // UI-Elemente referenzieren
+                    TextView titleTextView = dialogView.findViewById(R.id.tv_dialog_title);
+                    EditText nameEditText = dialogView.findViewById(R.id.et_contact_name);
+                    EditText phoneEditText = dialogView.findViewById(R.id.et_contact_phone);
+                    EditText notesEditText = dialogView.findViewById(R.id.et_contact_notes);
+                    Button cancelButton = dialogView.findViewById(R.id.btn_cancel);
+                    Button saveButton = dialogView.findViewById(R.id.btn_save);
+                    
+                    // Standort-UI-Elemente
+                    Button currentLocationButton = dialogView.findViewById(R.id.btn_current_location);
+                    Button enterCoordinatesButton = dialogView.findViewById(R.id.btn_enter_coordinates);
+                    LinearLayout coordinatesLayout = dialogView.findViewById(R.id.layout_coordinates);
+                    EditText latitudeEditText = dialogView.findViewById(R.id.et_latitude);
+                    EditText longitudeEditText = dialogView.findViewById(R.id.et_longitude);
+                    Button clearLocationButton = dialogView.findViewById(R.id.btn_clear_location);
+                    
+                    // Titel ändern
+                    titleTextView.setText("Edit Contact");
+                    
+                    // Kontaktdaten einfüllen
+                    nameEditText.setText(contact.getName());
+                    phoneEditText.setText(contact.getPhoneNumber());
+                    notesEditText.setText(contact.getNotes());
+                    
+                    // Temporäre Standortvariablen setzen
+                    tempLatitude = contact.getLatitude();
+                    tempLongitude = contact.getLongitude();
+                    
+                    // Standortdaten anzeigen, wenn vorhanden
+                    if (contact.hasLocation()) {
+                        coordinatesLayout.setVisibility(View.VISIBLE);
+                        latitudeEditText.setText(String.valueOf(contact.getLatitude()));
+                        longitudeEditText.setText(String.valueOf(contact.getLongitude()));
+                        } else {
+                        coordinatesLayout.setVisibility(View.GONE);
                     }
                     
-                    // Kontakte neu laden und Dialog schließen
-                    loadContacts();
-                    dialog.dismiss();
+                    // Dialog erstellen
+                    final AlertDialog dialog = builder.create();
+                    
+                    // Aktuellen Standort-Button
+                    currentLocationButton.setOnClickListener(v -> {
+                        getCurrentLocation();
+                        if (tempLatitude != null && tempLongitude != null) {
+                            // Koordinaten anzeigen
+                            coordinatesLayout.setVisibility(View.VISIBLE);
+                            latitudeEditText.setText(String.valueOf(tempLatitude));
+                            longitudeEditText.setText(String.valueOf(tempLongitude));
+                    } else {
+                            Toast.makeText(dialogContext, "Could not get current location", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                    
+                    // Koordinaten eingeben-Button
+                    enterCoordinatesButton.setOnClickListener(v -> {
+                        showCoordinatesInputDialog(coordinates -> {
+                            if (coordinates != null && coordinates.length == 2) {
+                                tempLatitude = coordinates[0];
+                                tempLongitude = coordinates[1];
+                                
+                                // Koordinaten anzeigen
+                                coordinatesLayout.setVisibility(View.VISIBLE);
+                                latitudeEditText.setText(String.valueOf(tempLatitude));
+                                longitudeEditText.setText(String.valueOf(tempLongitude));
+                            }
+                        });
+                    });
+                    
+                    // Standort löschen-Button
+                    clearLocationButton.setOnClickListener(v -> {
+                        tempLatitude = null;
+                        tempLongitude = null;
+                        coordinatesLayout.setVisibility(View.GONE);
+                    });
+                    
+                    // Koordinaten-Felder überwachen
+                    latitudeEditText.addTextChangedListener(new android.text.TextWatcher() {
+                        @Override
+                        public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                        
+                        @Override
+                        public void onTextChanged(CharSequence s, int start, int before, int count) {}
+                        
+                        @Override
+                        public void afterTextChanged(android.text.Editable s) {
+                            try {
+                                if (!TextUtils.isEmpty(s)) {
+                                    tempLatitude = Double.parseDouble(s.toString());
+                        } else {
+                                    tempLatitude = null;
+                                }
+                            } catch (NumberFormatException e) {
+                                tempLatitude = null;
+                            }
+                        }
+                    });
+                    
+                    longitudeEditText.addTextChangedListener(new android.text.TextWatcher() {
+                        @Override
+                        public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                        
+                        @Override
+                        public void onTextChanged(CharSequence s, int start, int before, int count) {}
+                        
+                        @Override
+                        public void afterTextChanged(android.text.Editable s) {
+                            try {
+                                if (!TextUtils.isEmpty(s)) {
+                                    tempLongitude = Double.parseDouble(s.toString());
+                                } else {
+                                    tempLongitude = null;
+                                }
+                            } catch (NumberFormatException e) {
+                                tempLongitude = null;
+                            }
+                        }
+                    });
+                    
+                    // Cancel-Button
+                    cancelButton.setOnClickListener(v -> dialog.dismiss());
+                    
+                    // Save-Button
+                    saveButton.setOnClickListener(v -> {
+                        try {
+                            // Eingaben validieren
+                            String name = nameEditText.getText().toString().trim();
+                            String phone = phoneEditText.getText().toString().trim();
+                            String notes = notesEditText.getText().toString().trim();
+                            
+                            if (TextUtils.isEmpty(name)) {
+                                Toast.makeText(dialogContext, "Please enter a name", Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            
+                            // Debug-Ausgabe für Standortdaten
+                            Log.d(TAG, "Updating contact with location data - tempLatitude: " + tempLatitude + ", tempLongitude: " + tempLongitude);
+                            
+                            // Kontakt aktualisieren
+                            contact.setName(name);
+                            contact.setPhoneNumber(phone);
+                            contact.setNotes(notes);
+                            
+                            // Standort aktualisieren
+                            if (tempLatitude != null && tempLongitude != null) {
+                                contact.setLocation(tempLatitude, tempLongitude);
+                                Log.d(TAG, "Setting location: " + tempLatitude + ", " + tempLongitude);
+                                Log.d(TAG, "Contact has location: " + contact.hasLocation());
+                            } else {
+                                contact.clearLocation();
+                                Log.d(TAG, "Clearing location");
+                            }
+                            
+                            // Kontakt in der Datenbank aktualisieren
+                            Log.d(TAG, "Updating contact in database: " + contact.toString());
+                            int result = dbHelper.updateContact(contact);
+                            Log.d(TAG, "Database update result: " + result);
+                            
+                            if (result > 0) {
+                                // Lade Kontakte neu, um die Liste zu aktualisieren
+                                        loadContacts();
+                                        
+                                        dialog.dismiss();
+                                Toast.makeText(dialogContext, "Contact updated successfully", Toast.LENGTH_SHORT).show();
+                                    } else {
+                                Toast.makeText(dialogContext, "Failed to update contact", Toast.LENGTH_SHORT).show();
+                            }
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error updating contact: " + e.getMessage(), e);
+                            Toast.makeText(dialogContext, "Error updating contact: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                    
+                    dialog.show();
                 } catch (Exception e) {
-                    Log.e(TAG, "Error saving contact: " + e.getMessage(), e);
-                    Toast.makeText(mapViewContext, "Error saving contact: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    Log.e(TAG, "Error in UI thread showing edit dialog: " + e.getMessage(), e);
+                    Toast.makeText(dialogContext, "Error showing dialog: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error showing edit contact dialog: " + e.getMessage(), e);
+            Toast.makeText(pluginContext, "Error showing dialog", Toast.LENGTH_SHORT).show();
+        }
+    }
+    
+    /**
+     * Zeigt den Dialog zum Eingeben von Koordinaten
+     */
+    private void showCoordinatesInputDialog(CoordinatesInputListener listener) {
+        try {
+            // Verwende den MapView-Kontext für den Dialog
+            MapView mapView = MapView.getMapView();
+            if (mapView == null) {
+                Log.e(TAG, "MapView is null");
+                Toast.makeText(pluginContext, "Error: Could not access MapView", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            
+            final Context dialogContext = mapView.getContext();
+            if (dialogContext == null) {
+                Log.e(TAG, "MapView context is null");
+                Toast.makeText(pluginContext, "Error: Could not create dialog context", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            
+            // Stelle sicher, dass der Dialog auf dem UI-Thread erstellt wird
+            mapView.post(() -> {
+                try {
+                    // Dialog-Layout inflaten
+                    AlertDialog.Builder builder = new AlertDialog.Builder(dialogContext);
+                    View dialogView = LayoutInflater.from(pluginContext).inflate(R.layout.dialog_coordinates_input, null);
+                    builder.setView(dialogView);
+                    
+                    // UI-Elemente referenzieren
+                    EditText latitudeEditText = dialogView.findViewById(R.id.et_dialog_latitude);
+                    EditText longitudeEditText = dialogView.findViewById(R.id.et_dialog_longitude);
+                    Button cancelButton = dialogView.findViewById(R.id.btn_dialog_cancel);
+                    Button saveButton = dialogView.findViewById(R.id.btn_dialog_save);
+                    
+                    // Dialog erstellen
+                    final AlertDialog dialog = builder.create();
+                    
+                    // Cancel-Button
+                    cancelButton.setOnClickListener(v -> dialog.dismiss());
+                    
+                    // Save-Button
+                    saveButton.setOnClickListener(v -> {
+                        try {
+                            // Eingaben validieren
+                            String latStr = latitudeEditText.getText().toString().trim();
+                            String lonStr = longitudeEditText.getText().toString().trim();
+                            
+                            if (TextUtils.isEmpty(latStr) || TextUtils.isEmpty(lonStr)) {
+                                Toast.makeText(dialogContext, "Please enter both latitude and longitude", Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            
+                            double latitude = Double.parseDouble(latStr);
+                            double longitude = Double.parseDouble(lonStr);
+                            
+                            // Koordinaten validieren
+                            if (latitude < -90 || latitude > 90) {
+                                Toast.makeText(dialogContext, "Latitude must be between -90 and 90", Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            
+                            if (longitude < -180 || longitude > 180) {
+                                Toast.makeText(dialogContext, "Longitude must be between -180 and 180", Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            
+                            // Koordinaten zurückgeben
+                            listener.onCoordinatesEntered(new Double[] { latitude, longitude });
+                    dialog.dismiss();
+                        } catch (NumberFormatException e) {
+                            Toast.makeText(dialogContext, "Please enter valid coordinates", Toast.LENGTH_SHORT).show();
                 }
             });
             
             dialog.show();
         } catch (Exception e) {
-            Log.e(TAG, "Error showing contact dialog", e);
+                    Log.e(TAG, "Error in UI thread showing coordinates dialog: " + e.getMessage(), e);
+                    Toast.makeText(dialogContext, "Error showing dialog: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error showing coordinates input dialog: " + e.getMessage(), e);
+            Toast.makeText(pluginContext, "Error showing dialog", Toast.LENGTH_SHORT).show();
         }
+    }
+    
+    /**
+     * Ruft den aktuellen Standort ab
+     */
+    private void getCurrentLocation() {
+        try {
+            // Prüfen, ob Standortberechtigungen vorhanden sind
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (ContextCompat.checkSelfPermission(pluginContext, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                    Toast.makeText(pluginContext, "Location permission not granted", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+            }
+            
+            // Versuche, den Standort von ATAK zu bekommen
+            MapView mapView = MapView.getMapView();
+            if (mapView != null) {
+                Marker selfMarker = mapView.getSelfMarker();
+                if (selfMarker != null) {
+                    GeoPoint point = selfMarker.getPoint();
+                    tempLatitude = point.getLatitude();
+                    tempLongitude = point.getLongitude();
+                    Log.d(TAG, "Got location from ATAK: " + tempLatitude + ", " + tempLongitude);
+                    return;
+                }
+            }
+            
+            // Fallback: Versuche, den Standort vom LocationManager zu bekommen
+            LocationManager locationManager = (LocationManager) pluginContext.getSystemService(Context.LOCATION_SERVICE);
+            if (locationManager != null) {
+                Location lastKnownLocation = null;
+                
+                // Versuche GPS-Standort
+                if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                    lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+                }
+                
+                // Wenn GPS-Standort nicht verfügbar, versuche Netzwerk-Standort
+                if (lastKnownLocation == null && locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                    lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+                }
+                
+                if (lastKnownLocation != null) {
+                    tempLatitude = lastKnownLocation.getLatitude();
+                    tempLongitude = lastKnownLocation.getLongitude();
+                    Log.d(TAG, "Got location from LocationManager: " + tempLatitude + ", " + tempLongitude);
+                    return;
+                }
+            }
+            
+            // Kein Standort verfügbar
+            Toast.makeText(pluginContext, "Could not get current location", Toast.LENGTH_SHORT).show();
+            tempLatitude = null;
+            tempLongitude = null;
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting current location: " + e.getMessage(), e);
+            Toast.makeText(pluginContext, "Error getting current location", Toast.LENGTH_SHORT).show();
+            tempLatitude = null;
+            tempLongitude = null;
+        }
+    }
+    
+    /**
+     * Interface für Koordinateneingabe-Callback
+     */
+    private interface CoordinatesInputListener {
+        void onCoordinatesEntered(Double[] coordinates);
     }
     
     /**
@@ -486,10 +902,150 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
             Button editButton = dialogView.findViewById(R.id.btn_edit);
             Button deleteButton = dialogView.findViewById(R.id.btn_delete);
             
+            // Standort-UI-Elemente
+            LinearLayout locationLayout = dialogView.findViewById(R.id.layout_location_details);
+            LinearLayout locationButtonsLayout = dialogView.findViewById(R.id.layout_location_buttons);
+            TextView latitudeView = dialogView.findViewById(R.id.tv_detail_latitude);
+            TextView longitudeView = dialogView.findViewById(R.id.tv_detail_longitude);
+            Button showOnMapButton = dialogView.findViewById(R.id.btn_show_on_map);
+            Button copyCoordinatesButton = dialogView.findViewById(R.id.btn_copy_coordinates);
+            
             // Kontaktdaten anzeigen
             nameView.setText(contact.getName());
             phoneView.setText(contact.getPhoneNumber());
             notesView.setText(contact.getNotes());
+            
+            // Dialog erstellen - vor der Verwendung in Listenern deklarieren
+            builder.setView(dialogView);
+            final AlertDialog dialog = builder.create();
+            
+            // Standortdaten anzeigen, wenn vorhanden
+            if (contact.hasLocation()) {
+                locationLayout.setVisibility(View.VISIBLE);
+                locationButtonsLayout.setVisibility(View.VISIBLE);
+                latitudeView.setText(String.valueOf(contact.getLatitude()));
+                longitudeView.setText(String.valueOf(contact.getLongitude()));
+                
+                // Langes Klicken auf Latitude zum Kopieren
+                latitudeView.setOnLongClickListener(v -> {
+                    try {
+                        // Latitude in die Zwischenablage kopieren
+                        ClipboardManager clipboard = (ClipboardManager) mapViewContext.getSystemService(Context.CLIPBOARD_SERVICE);
+                        ClipData clip = ClipData.newPlainText("Latitude", String.valueOf(contact.getLatitude()));
+                        clipboard.setPrimaryClip(clip);
+                        
+                        Toast.makeText(mapViewContext, "Latitude copied to clipboard", Toast.LENGTH_SHORT).show();
+                        return true; // Event wurde behandelt
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error copying latitude: " + e.getMessage(), e);
+                        return false; // Event wurde nicht behandelt
+                    }
+                });
+                
+                // Langes Klicken auf Longitude zum Kopieren
+                longitudeView.setOnLongClickListener(v -> {
+                    try {
+                        // Longitude in die Zwischenablage kopieren
+                        ClipboardManager clipboard = (ClipboardManager) mapViewContext.getSystemService(Context.CLIPBOARD_SERVICE);
+                        ClipData clip = ClipData.newPlainText("Longitude", String.valueOf(contact.getLongitude()));
+                        clipboard.setPrimaryClip(clip);
+                        
+                        Toast.makeText(mapViewContext, "Longitude copied to clipboard", Toast.LENGTH_SHORT).show();
+                        return true; // Event wurde behandelt
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error copying longitude: " + e.getMessage(), e);
+                        return false; // Event wurde nicht behandelt
+                    }
+                });
+                
+                // "Copy Coordinates"-Button
+                if (copyCoordinatesButton != null) {
+                    copyCoordinatesButton.setOnClickListener(v -> {
+                        try {
+                            // Beide Koordinaten in die Zwischenablage kopieren
+                            String coordinates = contact.getLatitude() + "," + contact.getLongitude();
+                            ClipboardManager clipboard = (ClipboardManager) mapViewContext.getSystemService(Context.CLIPBOARD_SERVICE);
+                            ClipData clip = ClipData.newPlainText("Coordinates", coordinates);
+                            clipboard.setPrimaryClip(clip);
+                            
+                            Toast.makeText(mapViewContext, "Coordinates copied to clipboard", Toast.LENGTH_SHORT).show();
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error copying coordinates: " + e.getMessage(), e);
+                            Toast.makeText(mapViewContext, "Error copying coordinates", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
+                
+                // "Show on Map"-Button aktivieren
+                showOnMapButton.setOnClickListener(v -> {
+                    try {
+                        // MapView-Instanz holen
+                        MapView mapView = MapView.getMapView();
+                        if (mapView != null) {
+                            // GeoPoint aus den Koordinaten erstellen
+                            com.atakmap.coremap.maps.coords.GeoPoint point = 
+                                new com.atakmap.coremap.maps.coords.GeoPoint(
+                                    contact.getLatitude(), 
+                                    contact.getLongitude());
+                            
+                            // Karte zu diesem Punkt bewegen
+                            mapView.getMapController().panTo(point, true);
+                            
+                            // Optional: Zoom-Level anpassen
+                            mapView.getMapController().zoomTo(0.0002, true);
+                            
+                            // Marker erstellen und zur Karte hinzufügen
+                            try {
+                                // Marker-Typ für Kontakte definieren
+                                String markerType = "a-f-G-U-C"; // Civilian Contact
+                                
+                                // Marker-ID generieren (Kontakt-ID + Name)
+                                String markerId = "contact_" + contact.getId() + "_" + 
+                                    contact.getName().replaceAll("\\s+", "_");
+                                
+                                // Marker erstellen
+                                Marker marker = new Marker(point, markerType);
+                                marker.setMetaString("callsign", contact.getName());
+                                marker.setMetaString("type", "Contact");
+                                marker.setMetaString("how", "h-g-i-g-o");
+                                marker.setMetaBoolean("readiness", true);
+                                marker.setMetaString("remarks", contact.getNotes());
+                                marker.setMetaString("contact", contact.getPhoneNumber());
+                                marker.setMetaString("uid", markerId);
+                                marker.setTitle(contact.getName());
+                                
+                                // Marker zur Karte hinzufügen
+                                mapView.getRootGroup().addItem(marker);
+                                
+                                Log.d(TAG, "Added marker for contact: " + contact.getName());
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error creating marker: " + e.getMessage(), e);
+                            }
+                            
+                            // Dialog schließen
+                            dialog.dismiss();
+                            
+                            // Feedback anzeigen
+                            Toast.makeText(mapViewContext, 
+                                "Showing location for " + contact.getName(), 
+                                Toast.LENGTH_SHORT).show();
+                        } else {
+                            Toast.makeText(mapViewContext, 
+                                "Could not access map view", 
+                                Toast.LENGTH_SHORT).show();
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error showing location on map: " + e.getMessage(), e);
+                        Toast.makeText(mapViewContext, 
+                            "Error showing location on map", 
+                            Toast.LENGTH_SHORT).show();
+                    }
+                });
+            } else {
+                // Standortbereich ausblenden, wenn keine Daten vorhanden sind
+                locationLayout.setVisibility(View.GONE);
+                locationButtonsLayout.setVisibility(View.GONE);
+            }
             
             // Telefonnummer anklickbar machen
             phoneView.setOnClickListener(v -> {
@@ -530,13 +1086,10 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                 }
             });
             
-            builder.setView(dialogView);
-            final AlertDialog dialog = builder.create();
-            
             // Edit-Button
             editButton.setOnClickListener(v -> {
                 dialog.dismiss();
-                showContactDialog(contact);
+                showEditContactDialog(contact);
             });
             
             // Delete-Button
@@ -579,7 +1132,7 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
     }
     
     /**
-     * Zeigt den Info-Dialog mit Versionsinformationen und Herausgeber
+     * Zeigt den Info-Dialog mit Versionsinformationen und Anleitung
      */
     private void showInfoDialog() {
         try {
@@ -596,8 +1149,27 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
             Button closeButton = dialogView.findViewById(R.id.btn_close);
             
             // Versionsinformationen setzen
-            versionView.setText("1.1.0");
+            versionView.setText("1.2.0");
             publisherView.setText("TAKHub");
+            
+            // Publisher-Link einrichten
+            publisherView.setOnClickListener(v -> {
+                try {
+                    // URL zur TAKHub-Website
+                    String url = "https://takhub.de/en/home/";
+                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    
+                    // Prüfen, ob eine App den Intent behandeln kann
+                    if (browserIntent.resolveActivity(mapViewContext.getPackageManager()) != null) {
+                        mapViewContext.startActivity(browserIntent);
+                    } else {
+                        Toast.makeText(mapViewContext, "No browser app available", Toast.LENGTH_SHORT).show();
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error opening website: " + e.getMessage(), e);
+                    Toast.makeText(mapViewContext, "Error opening website", Toast.LENGTH_SHORT).show();
+                }
+            });
             
             builder.setView(dialogView);
             final AlertDialog dialog = builder.create();
@@ -637,10 +1209,41 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                 Log.e(TAG, "Error resetting search field: " + e.getMessage(), e);
             }
             
+            // Kontaktliste leeren
+            contactList.clear();
+            
             // Lade Kontakte neu (this will also reset adapter and UI)
             loadContacts();
+            
+            // Stelle sicher, dass die UI aktualisiert wird
+            if (adapter != null) {
+                adapter.notifyDataSetChanged();
+            }
+            
+            // UI-Status aktualisieren
+            updateContactsUI();
         } catch (Exception e) {
             Log.e(TAG, "Error resetting ContactManager: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Updates the empty view message based on current state
+     */
+    private void updateEmptyView() {
+        if (emptyView != null) {
+            if (contactList == null || contactList.isEmpty()) {
+                emptyView.setText("No contacts added yet");
+                emptyView.setVisibility(View.VISIBLE);
+                if (recyclerView != null) {
+                    recyclerView.setVisibility(View.GONE);
+                }
+            } else {
+                emptyView.setVisibility(View.GONE);
+                if (recyclerView != null) {
+                    recyclerView.setVisibility(View.VISIBLE);
+                }
+            }
         }
     }
 } 

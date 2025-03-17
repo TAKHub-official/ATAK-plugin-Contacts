@@ -1,6 +1,6 @@
 # ContactsPlugin for ATAK
 
-Version 1.1.0
+Version 1.2.0
 
 _________________________________________________________________
 ## PURPOSE AND CAPABILITIES
@@ -8,7 +8,7 @@ _________________________________________________________________
 ContactsPlugin is an ATAK plugin that allows users to manage contacts within the ATAK environment. This plugin provides a simple and efficient way to store, view, edit, and delete contact information for team members, points of contact, or any individuals relevant to your mission.
 
 ### Key Features:
-- Create and store contacts with name, phone number, and notes
+- Create and store contacts with name, phone number, notes, and location data
 - View all contacts in an alphabetically sorted list
 - Edit existing contact information
 - Delete contacts with confirmation
@@ -16,13 +16,16 @@ ContactsPlugin is an ATAK plugin that allows users to manage contacts within the
 - Works in offline environments
 - International phone number format support
 - Interactive phone numbers for direct calling or copying
+- Location data with options to use current location or enter coordinates manually
+- Show contact locations on the ATAK map with markers
+- Copy coordinates to clipboard for use in other applications
 - Version information and publisher details
 - Optimized UI layout for maximum contact visibility
 
 _________________________________________________________________
 ## STATUS
 
-Released: Version 1.1.0 (March 2025)  
+Released: Version 1.2.0 (March 2025)  
 Compatibility: ATAK-CIV 5.3.0.12 and higher
 
 _________________________________________________________________
@@ -31,6 +34,7 @@ _________________________________________________________________
 ### Prerequisites
 - ATAK-CIV 5.3.0.12 or higher installed on your device
 - Storage permissions granted to ATAK
+- Location permissions granted to ATAK (for location features)
 
 ### Installation Steps
 1. Download the ContactsPlugin APK file
@@ -57,20 +61,30 @@ Tap the "Contacts" icon in the ATAK toolbar to open the Contacts panel.
    - Country Code (defaults to +49)
    - Phone Number (optional)
    - Notes (optional)
+   - Location (optional):
+     - Tap "Current Location" to use your device's current location
+     - Tap "Enter Coordinates" to manually input latitude and longitude
+     - Use "Clear Location" to remove location data
 4. Tap "Save"
 
 ### Viewing Contact Details
 1. Open the Contacts panel
 2. Tap on any contact in the list to view details
+3. If the contact has location data, it will be displayed in the details view
 
 ### Using Phone Numbers
 1. **Direct Calling**: Tap on the phone number in the contact details to open your device's dialer app with the number pre-filled
 2. **Copy to Clipboard**: Long-press on the phone number to copy it to your clipboard for use in other apps
 
+### Using Location Data
+1. **View on Map**: Tap "Show on Map" to center the ATAK map on the contact's location and create a marker
+2. **Copy Coordinates**: Tap "Copy Coordinates" to copy the latitude and longitude to your clipboard
+3. **Copy Individual Coordinates**: Long-press on either latitude or longitude to copy just that value
+
 ### Editing a Contact
 1. Open the contact details by tapping on a contact
 2. Tap the "Edit" button
-3. Modify the information as needed
+3. Modify the information as needed, including location data
 4. Tap "Save"
 
 ### Deleting a Contact
@@ -104,6 +118,8 @@ _________________________________________________________________
 ### Permissions
 - READ_EXTERNAL_STORAGE: Required for database storage
 - WRITE_EXTERNAL_STORAGE: Required for database storage
+- ACCESS_FINE_LOCATION: Required for current location functionality
+- ACCESS_COARSE_LOCATION: Required for current location functionality
 
 ### Versioning
 This project uses Semantic Versioning (SemVer):
@@ -119,6 +135,8 @@ _________________________________________________________________
 - **Contacts not showing**: Refresh the contacts list by closing and reopening the plugin.
 - **Contact list not sorting correctly**: Contact list should sort alphabetically by name. If sorting issues occur, restart the plugin.
 - **Phone dialer not opening**: If tapping on a phone number doesn't open the dialer, ensure your device has a phone app installed and set as the default dialer.
+- **Current location not working**: Ensure location permissions are granted to ATAK and that your device's location services are enabled.
+- **Contacts disappearing after search**: If contacts disappear after searching, try closing and reopening the plugin to refresh the list.
 
 ### Reporting Issues
 If you encounter issues not covered in this documentation, please report them to the development team.
@@ -139,6 +157,19 @@ For developers interested in extending or modifying this plugin, the source code
 
 _________________________________________________________________
 ## VERSION HISTORY
+
+### Version 1.2.0 (March 2025)
+- Added location functionality to store and display contact locations
+- Added options to use current device location or enter coordinates manually
+- Added ability to show contact locations on the ATAK map with markers
+- Added coordinate copying functionality (both individual and combined)
+- Improved contact details view with optimized layout
+- Enhanced search functionality with better filtering and list restoration
+- Fixed issue with contacts disappearing after search
+- Added location permissions for accessing device location
+- Improved database structure to support location data
+- Optimized UI layout for better space utilization
+- Improved error handling and logging throughout the application
 
 ### Version 1.1.0 (March 2025)
 - Added international phone number format support with country code field

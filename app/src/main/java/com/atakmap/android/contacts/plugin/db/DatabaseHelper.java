@@ -20,7 +20,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String TAG = "ContactsDB";
     
     // Datenbankversion
-    private static final int DATABASE_VERSION = 1;
+    private static final int DATABASE_VERSION = 2;
     
     // Datenbankname
     private static final String DATABASE_NAME = "contacts_db";
@@ -33,13 +33,17 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     public static final String KEY_NAME = "name";
     public static final String KEY_PHONE = "phone";
     public static final String KEY_NOTES = "notes";
+    public static final String KEY_LATITUDE = "latitude";
+    public static final String KEY_LONGITUDE = "longitude";
     
     // SQL-Anweisung zum Erstellen der Tabelle
     private static final String CREATE_TABLE_CONTACTS = "CREATE TABLE " + TABLE_CONTACTS + "("
             + KEY_ID + " INTEGER PRIMARY KEY,"
             + KEY_NAME + " TEXT,"
             + KEY_PHONE + " TEXT,"
-            + KEY_NOTES + " TEXT" + ")";
+            + KEY_NOTES + " TEXT,"
+            + KEY_LATITUDE + " REAL,"
+            + KEY_LONGITUDE + " REAL" + ")";
     
     private static DatabaseHelper instance;
     private String dbPath;
@@ -142,25 +146,101 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     @Override
     public void onCreate(SQLiteDatabase db) {
         try {
-            // Tabellen erstellen
-            Log.d(TAG, "Creating database with SQL: " + CREATE_TABLE_CONTACTS);
-            db.execSQL(CREATE_TABLE_CONTACTS);
-            Log.d(TAG, "Database created successfully");
+            Log.d(TAG, "Creating database tables");
+            
+            // Prüfe, ob die Tabelle bereits existiert
+            Cursor cursor = null;
+            boolean tableExists = false;
+            try {
+                cursor = db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='" + TABLE_CONTACTS + "'", null);
+                tableExists = cursor != null && cursor.getCount() > 0;
+                Log.d(TAG, "Table check result: exists=" + tableExists);
+            } catch (Exception e) {
+                Log.e(TAG, "Error checking if table exists: " + e.getMessage(), e);
+            } finally {
+                if (cursor != null) {
+                    cursor.close();
+                }
+            }
+            
+            // Wenn die Tabelle bereits existiert, prüfe, ob sie die richtigen Spalten hat
+            if (tableExists) {
+                Log.d(TAG, "Table already exists, checking columns");
+                
+                boolean hasLocationColumns = false;
+                try {
+                    cursor = db.rawQuery("PRAGMA table_info(" + TABLE_CONTACTS + ")", null);
+                    if (cursor != null) {
+                        int nameIndex = cursor.getColumnIndex("name");
+                        if (nameIndex != -1) {
+                            while (cursor.moveToNext()) {
+                                String columnName = cursor.getString(nameIndex);
+                                if (KEY_LATITUDE.equals(columnName) || KEY_LONGITUDE.equals(columnName)) {
+                                    hasLocationColumns = true;
+                                    break;
+                                }
+                            }
+                        }
+                        cursor.close();
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error checking table columns: " + e.getMessage(), e);
+                }
+                
+                // Wenn die Standortspalten fehlen, füge sie hinzu
+                if (!hasLocationColumns) {
+                    Log.d(TAG, "Adding location columns to existing table");
+                    try {
+                        db.execSQL("ALTER TABLE " + TABLE_CONTACTS + " ADD COLUMN " + KEY_LATITUDE + " REAL;");
+                        db.execSQL("ALTER TABLE " + TABLE_CONTACTS + " ADD COLUMN " + KEY_LONGITUDE + " REAL;");
+                        Log.d(TAG, "Added location columns to contacts table");
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error adding location columns: " + e.getMessage(), e);
+                        
+                        // Wenn das Hinzufügen der Spalten fehlschlägt, erstelle die Tabelle neu
+                        try {
+                            Log.d(TAG, "Recreating table after column add failure");
+                            db.execSQL("DROP TABLE IF EXISTS " + TABLE_CONTACTS);
+                            db.execSQL(CREATE_TABLE_CONTACTS);
+                            Log.d(TAG, "Table recreated successfully");
+                        } catch (Exception e2) {
+                            Log.e(TAG, "Error recreating table: " + e2.getMessage(), e2);
+                        }
+                    }
+                }
+            } else {
+                // Wenn die Tabelle nicht existiert, erstelle sie
+                Log.d(TAG, "Table does not exist, creating it");
+                db.execSQL(CREATE_TABLE_CONTACTS);
+                Log.d(TAG, "Table created successfully");
+            }
         } catch (Exception e) {
-            Log.e(TAG, "Error creating database: " + e.getMessage(), e);
-            throw e; // Rethrow zur sofortigen Fehlererkennung
+            Log.e(TAG, "Error creating database tables: " + e.getMessage(), e);
+            
+            // Letzter Versuch, die Tabelle zu erstellen
+            try {
+                Log.d(TAG, "Last attempt to create table");
+                db.execSQL(CREATE_TABLE_CONTACTS);
+                Log.d(TAG, "Table created in last attempt");
+            } catch (Exception e2) {
+                Log.e(TAG, "Final error creating table: " + e2.getMessage(), e2);
+            }
         }
     }
     
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+        Log.d(TAG, "Upgrading database from version " + oldVersion + " to " + newVersion);
+        
         try {
-            // Bei Upgrade alte Tabelle löschen und neu erstellen
-            Log.d(TAG, "Upgrading database from version " + oldVersion + " to " + newVersion);
-            db.execSQL("DROP TABLE IF EXISTS " + TABLE_CONTACTS);
-            onCreate(db);
+            if (oldVersion < 2) {
+                // Upgrade von Version 1 auf 2: Hinzufügen der Standortspalten
+                db.execSQL("ALTER TABLE " + TABLE_CONTACTS + " ADD COLUMN " + KEY_LATITUDE + " REAL;");
+                db.execSQL("ALTER TABLE " + TABLE_CONTACTS + " ADD COLUMN " + KEY_LONGITUDE + " REAL;");
+                Log.d(TAG, "Added location columns to contacts table");
+            }
         } catch (Exception e) {
-            Log.e(TAG, "Error upgrading database", e);
+            Log.e(TAG, "Error upgrading database: " + e.getMessage(), e);
         }
     }
     
@@ -172,7 +252,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         long id = -1;
         SQLiteDatabase db = null;
         try {
-            Log.d(TAG, "Starting to add contact: " + contact.getName());
+            Log.d(TAG, "Starting to add contact: " + contact.toString());
             db = this.getWritableDatabase();
             if (db == null) {
                 Log.e(TAG, "Failed to get writable database");
@@ -208,31 +288,144 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             values.put(KEY_PHONE, contact.getPhoneNumber());
             values.put(KEY_NOTES, contact.getNotes());
             
+            // Füge Standortdaten hinzu, wenn vorhanden
+            if (contact.hasLocation()) {
+                Log.d(TAG, "Contact has location: " + contact.getLatitude() + ", " + contact.getLongitude());
+                values.put(KEY_LATITUDE, contact.getLatitude());
+                values.put(KEY_LONGITUDE, contact.getLongitude());
+            } else {
+                Log.d(TAG, "Contact has no location");
+                // Explizit NULL setzen für Standortdaten
+                values.putNull(KEY_LATITUDE);
+                values.putNull(KEY_LONGITUDE);
+            }
+            
             Log.d(TAG, "Prepared values for contact: " + values.toString());
             
-            // Datenbank seriell für thread-safety zugreifen
-            db.beginTransaction();
+            // Erster Versuch: Normaler Einfügevorgang
             try {
-                // Einfügen
-                id = db.insert(TABLE_CONTACTS, null, values);
-                if (id != -1) {
-                    db.setTransactionSuccessful();
-                    Log.d(TAG, "Contact inserted successfully with ID: " + id);
-                } else {
-                    Log.e(TAG, "Insert operation returned -1, insertion failed");
-                    
-                    // Check if there's a specific SQLite error
-                    try {
-                        db.execSQL("SELECT * FROM " + TABLE_CONTACTS + " LIMIT 1");
-                        Log.d(TAG, "Table seems to be accessible, but insert failed");
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error accessing table: " + e.getMessage());
+                // Datenbank seriell für thread-safety zugreifen
+                db.beginTransaction();
+                try {
+                    // Einfügen
+                    id = db.insert(TABLE_CONTACTS, null, values);
+                    if (id != -1) {
+                        db.setTransactionSuccessful();
+                        Log.d(TAG, "Contact inserted successfully with ID: " + id);
+                    } else {
+                        Log.e(TAG, "Insert operation returned -1, insertion failed");
+                        
+                        // Check if there's a specific SQLite error
+                        try {
+                            db.execSQL("SELECT * FROM " + TABLE_CONTACTS + " LIMIT 1");
+                            Log.d(TAG, "Table seems to be accessible, but insert failed");
+                            
+                            // Versuche, die Tabellenstruktur zu überprüfen
+                            Cursor tableInfo = db.rawQuery("PRAGMA table_info(" + TABLE_CONTACTS + ")", null);
+                            if (tableInfo != null) {
+                                Log.d(TAG, "Table structure:");
+                                while (tableInfo.moveToNext()) {
+                                    String columnName = tableInfo.getString(1);
+                                    String columnType = tableInfo.getString(2);
+                                    Log.d(TAG, "Column: " + columnName + ", Type: " + columnType);
+                                }
+                                tableInfo.close();
+                            }
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error accessing table: " + e.getMessage());
+                        }
                     }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error during transaction: " + e.getMessage(), e);
+                } finally {
+                    db.endTransaction();
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error during transaction: " + e.getMessage(), e);
-            } finally {
-                db.endTransaction();
+                Log.e(TAG, "Error in first insert attempt: " + e.getMessage(), e);
+            }
+            
+            // Wenn der erste Versuch fehlgeschlagen ist, versuche einen alternativen Ansatz
+            if (id == -1) {
+                Log.d(TAG, "First insert attempt failed, trying alternative approach");
+                
+                try {
+                    // Versuche, die Tabelle neu zu erstellen
+                    db.execSQL("DROP TABLE IF EXISTS " + TABLE_CONTACTS);
+                    db.execSQL(CREATE_TABLE_CONTACTS);
+                    Log.d(TAG, "Recreated table for alternative approach");
+                    
+                    // Versuche erneut einzufügen
+                    db.beginTransaction();
+                    try {
+                        id = db.insert(TABLE_CONTACTS, null, values);
+                        if (id != -1) {
+                            db.setTransactionSuccessful();
+                            Log.d(TAG, "Contact inserted successfully with alternative approach, ID: " + id);
+                        } else {
+                            Log.e(TAG, "Alternative insert approach also failed");
+                        }
+                    } finally {
+                        db.endTransaction();
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in alternative insert approach: " + e.getMessage(), e);
+                }
+            }
+            
+            // Wenn auch der alternative Ansatz fehlgeschlagen ist, versuche einen letzten Ansatz mit SQL
+            if (id == -1) {
+                Log.d(TAG, "Both insert attempts failed, trying direct SQL approach");
+                
+                try {
+                    // Erstelle einen SQL-Insert-Befehl
+                    StringBuilder sql = new StringBuilder();
+                    sql.append("INSERT INTO ").append(TABLE_CONTACTS).append(" (")
+                       .append(KEY_NAME).append(", ")
+                       .append(KEY_PHONE).append(", ")
+                       .append(KEY_NOTES);
+                    
+                    if (contact.hasLocation()) {
+                        sql.append(", ").append(KEY_LATITUDE)
+                           .append(", ").append(KEY_LONGITUDE);
+                    }
+                    
+                    sql.append(") VALUES ('")
+                       .append(contact.getName().replace("'", "''")).append("', '")
+                       .append(contact.getPhoneNumber().replace("'", "''")).append("', '")
+                       .append(contact.getNotes().replace("'", "''")).append("'");
+                    
+                    if (contact.hasLocation()) {
+                        sql.append(", ").append(contact.getLatitude())
+                           .append(", ").append(contact.getLongitude());
+                    }
+                    
+                    sql.append(")");
+                    
+                    Log.d(TAG, "Executing SQL: " + sql.toString());
+                    
+                    db.beginTransaction();
+                    try {
+                        db.execSQL(sql.toString());
+                        
+                        // Hole die ID des eingefügten Kontakts
+                        Cursor idCursor = db.rawQuery("SELECT last_insert_rowid()", null);
+                        if (idCursor != null && idCursor.moveToFirst()) {
+                            id = idCursor.getLong(0);
+                            idCursor.close();
+                            db.setTransactionSuccessful();
+                            Log.d(TAG, "Contact inserted successfully with SQL approach, ID: " + id);
+                        } else {
+                            Log.e(TAG, "Could not get last insert ID");
+                            if (idCursor != null) {
+                                idCursor.close();
+                            }
+                        }
+                    } finally {
+                        db.endTransaction();
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in SQL insert approach: " + e.getMessage(), e);
+                }
             }
         } catch (Exception e) {
             Log.e(TAG, "Error adding contact: " + e.getMessage(), e);
@@ -248,7 +441,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             SQLiteDatabase db = this.getReadableDatabase();
             
             Cursor cursor = db.query(TABLE_CONTACTS, 
-                    new String[] { KEY_ID, KEY_NAME, KEY_PHONE, KEY_NOTES },
+                    new String[] { KEY_ID, KEY_NAME, KEY_PHONE, KEY_NOTES, KEY_LATITUDE, KEY_LONGITUDE },
                     KEY_ID + "=?", new String[] { String.valueOf(id) }, 
                     null, null, null, null);
             
@@ -258,6 +451,18 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                         cursor.getString(1),
                         cursor.getString(2),
                         cursor.getString(3));
+                
+                // Prüfe, ob Standortdaten vorhanden sind
+                int latIndex = cursor.getColumnIndex(KEY_LATITUDE);
+                int longIndex = cursor.getColumnIndex(KEY_LONGITUDE);
+                
+                if (latIndex != -1 && longIndex != -1 && !cursor.isNull(latIndex) && !cursor.isNull(longIndex)) {
+                    contact.setLocation(
+                        cursor.getDouble(latIndex),
+                        cursor.getDouble(longIndex)
+                    );
+                }
+                
                 cursor.close();
                 return contact;
             }
@@ -328,12 +533,14 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 int nameIndex = cursor.getColumnIndex(KEY_NAME);
                 int phoneIndex = cursor.getColumnIndex(KEY_PHONE);
                 int notesIndex = cursor.getColumnIndex(KEY_NOTES);
+                int latIndex = cursor.getColumnIndex(KEY_LATITUDE);
+                int longIndex = cursor.getColumnIndex(KEY_LONGITUDE);
                 
                 Log.d(TAG, "Column indices - id:" + idIndex + ", name:" + nameIndex + 
-                      ", phone:" + phoneIndex + ", notes:" + notesIndex);
+                      ", phone:" + phoneIndex + ", notes:" + notesIndex + ", latitude:" + latIndex + ", longitude:" + longIndex);
                 
                 // Check if columns exist
-                if (idIndex >= 0 && nameIndex >= 0 && phoneIndex >= 0 && notesIndex >= 0) {
+                if (idIndex >= 0 && nameIndex >= 0 && phoneIndex >= 0 && notesIndex >= 0 && latIndex >= 0 && longIndex >= 0) {
                     do {
                         try {
                             long id = cursor.getLong(idIndex);
@@ -342,6 +549,15 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                             String notes = cursor.getString(notesIndex);
                             
                             Contact contact = new Contact(id, name, phone, notes);
+                            
+                            // Prüfe, ob Standortdaten vorhanden sind
+                            if (latIndex != -1 && longIndex != -1 && !cursor.isNull(latIndex) && !cursor.isNull(longIndex)) {
+                                contact.setLocation(
+                                    cursor.getDouble(latIndex),
+                                    cursor.getDouble(longIndex)
+                                );
+                            }
+                            
                             contactList.add(contact);
                             
                             Log.d(TAG, "Added contact - id:" + id + ", name:" + name + 
@@ -382,6 +598,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         int result = 0;
         SQLiteDatabase db = null;
         try {
+            Log.d(TAG, "Updating contact: " + contact.toString());
             db = this.getWritableDatabase();
             
             ContentValues values = new ContentValues();
@@ -389,19 +606,136 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             values.put(KEY_PHONE, contact.getPhoneNumber());
             values.put(KEY_NOTES, contact.getNotes());
             
-            // Serieller Zugriff für thread-safety
-            db.beginTransaction();
+            // Aktualisiere Standortdaten
+            if (contact.hasLocation()) {
+                Log.d(TAG, "Contact has location: " + contact.getLatitude() + ", " + contact.getLongitude());
+                values.put(KEY_LATITUDE, contact.getLatitude());
+                values.put(KEY_LONGITUDE, contact.getLongitude());
+            } else {
+                Log.d(TAG, "Contact has no location, setting NULL values");
+                values.putNull(KEY_LATITUDE);
+                values.putNull(KEY_LONGITUDE);
+            }
+            
+            Log.d(TAG, "Prepared values for update: " + values.toString());
+            
+            // Erster Versuch: Normaler Update-Vorgang
             try {
-                // Aktualisieren
-                result = db.update(TABLE_CONTACTS, values, KEY_ID + " = ?",
-                        new String[] { String.valueOf(contact.getId()) });
-                db.setTransactionSuccessful();
-                Log.d(TAG, "Updated contact with ID " + contact.getId() + ", rows affected: " + result);
-            } finally {
-                db.endTransaction();
+                // Serieller Zugriff für thread-safety
+                db.beginTransaction();
+                try {
+                    // Aktualisieren
+                    result = db.update(TABLE_CONTACTS, values, KEY_ID + " = ?",
+                            new String[] { String.valueOf(contact.getId()) });
+                    db.setTransactionSuccessful();
+                    Log.d(TAG, "Updated contact with ID " + contact.getId() + ", rows affected: " + result);
+                    
+                    if (result == 0) {
+                        Log.e(TAG, "No rows updated for contact ID " + contact.getId());
+                        
+                        // Überprüfe, ob der Kontakt existiert
+                        Cursor checkCursor = db.query(TABLE_CONTACTS, new String[] { KEY_ID },
+                                KEY_ID + "=?", new String[] { String.valueOf(contact.getId()) },
+                                null, null, null, null);
+                        
+                        if (checkCursor != null) {
+                            boolean exists = checkCursor.getCount() > 0;
+                            checkCursor.close();
+                            
+                            if (!exists) {
+                                Log.e(TAG, "Contact with ID " + contact.getId() + " does not exist in database");
+                            } else {
+                                Log.e(TAG, "Contact exists but update failed for unknown reason");
+                            }
+                        }
+                    }
+                } finally {
+                    db.endTransaction();
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error during update transaction: " + e.getMessage(), e);
+            }
+            
+            // Wenn der erste Versuch fehlgeschlagen ist, versuche einen alternativen Ansatz mit SQL
+            if (result == 0) {
+                Log.d(TAG, "Update failed, trying SQL approach");
+                
+                try {
+                    // Erstelle einen SQL-Update-Befehl
+                    StringBuilder sql = new StringBuilder();
+                    sql.append("UPDATE ").append(TABLE_CONTACTS).append(" SET ")
+                       .append(KEY_NAME).append(" = '").append(contact.getName().replace("'", "''")).append("', ")
+                       .append(KEY_PHONE).append(" = '").append(contact.getPhoneNumber().replace("'", "''")).append("', ")
+                       .append(KEY_NOTES).append(" = '").append(contact.getNotes().replace("'", "''")).append("'");
+                    
+                    if (contact.hasLocation()) {
+                        sql.append(", ").append(KEY_LATITUDE).append(" = ").append(contact.getLatitude())
+                           .append(", ").append(KEY_LONGITUDE).append(" = ").append(contact.getLongitude());
+                    } else {
+                        sql.append(", ").append(KEY_LATITUDE).append(" = NULL")
+                           .append(", ").append(KEY_LONGITUDE).append(" = NULL");
+                    }
+                    
+                    sql.append(" WHERE ").append(KEY_ID).append(" = ").append(contact.getId());
+                    
+                    Log.d(TAG, "Executing SQL: " + sql.toString());
+                    
+                    db.beginTransaction();
+                    try {
+                        db.execSQL(sql.toString());
+                        db.setTransactionSuccessful();
+                        result = 1; // Wir nehmen an, dass es funktioniert hat
+                        Log.d(TAG, "Contact updated successfully with SQL approach");
+                    } finally {
+                        db.endTransaction();
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in SQL update approach: " + e.getMessage(), e);
+                }
+            }
+            
+            // Wenn auch der SQL-Ansatz fehlgeschlagen ist, versuche einen letzten Ansatz mit Löschen und Neueinfügen
+            if (result == 0) {
+                Log.d(TAG, "Both update attempts failed, trying delete and reinsert approach");
+                
+                try {
+                    db.beginTransaction();
+                    try {
+                        // Lösche den alten Kontakt
+                        db.delete(TABLE_CONTACTS, KEY_ID + " = ?", new String[] { String.valueOf(contact.getId()) });
+                        
+                        // Füge den aktualisierten Kontakt neu ein
+                        ContentValues insertValues = new ContentValues();
+                        insertValues.put(KEY_ID, contact.getId()); // Wichtig: Behalte die gleiche ID
+                        insertValues.put(KEY_NAME, contact.getName());
+                        insertValues.put(KEY_PHONE, contact.getPhoneNumber());
+                        insertValues.put(KEY_NOTES, contact.getNotes());
+                        
+                        if (contact.hasLocation()) {
+                            insertValues.put(KEY_LATITUDE, contact.getLatitude());
+                            insertValues.put(KEY_LONGITUDE, contact.getLongitude());
+                        } else {
+                            insertValues.putNull(KEY_LATITUDE);
+                            insertValues.putNull(KEY_LONGITUDE);
+                        }
+                        
+                        long newId = db.insert(TABLE_CONTACTS, null, insertValues);
+                        if (newId != -1) {
+                            db.setTransactionSuccessful();
+                            result = 1;
+                            Log.d(TAG, "Contact updated successfully with delete and reinsert approach, new ID: " + newId);
+                        } else {
+                            Log.e(TAG, "Failed to reinsert contact after deletion");
+                        }
+                    } finally {
+                        db.endTransaction();
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in delete and reinsert approach: " + e.getMessage(), e);
+                }
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error updating contact with id " + contact.getId() + ": " + e.getMessage(), e);
+            Log.e(TAG, "Error updating contact: " + e.getMessage(), e);
         }
         return result;
     }
@@ -453,35 +787,71 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     
     @Override
     public synchronized SQLiteDatabase getWritableDatabase() {
-        if (dbPath != null) {
-            try {
-                File dbFile = new File(dbPath);
-                File dbDir = dbFile.getParentFile();
-                
-                if (dbDir != null && !dbDir.exists()) {
-                    boolean created = dbDir.mkdirs();
-                    Log.d(TAG, "Created database directory: " + created);
+        SQLiteDatabase db = null;
+        try {
+            if (dbPath != null) {
+                try {
+                    File dbFile = new File(dbPath);
+                    File dbDir = dbFile.getParentFile();
+                    
+                    if (dbDir != null && !dbDir.exists()) {
+                        boolean created = dbDir.mkdirs();
+                        Log.d(TAG, "Created database directory: " + created);
+                    }
+                    
+                    // Prüfen, ob die Datenbank existiert
+                    if (!dbFile.exists()) {
+                        // Wenn die Datenbank nicht existiert, erstellen wir sie
+                        try {
+                            db = SQLiteDatabase.openOrCreateDatabase(dbFile, null);
+                            onCreate(db);
+                            Log.d(TAG, "Created new database at: " + dbPath);
+                            return db;
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error creating database at " + dbPath + ": " + e.getMessage(), e);
+                            // Fallback auf super-Implementierung
+                            Log.d(TAG, "Falling back to default implementation after create error");
+                            return super.getWritableDatabase();
+                        }
+                    } else {
+                        // Wenn die Datenbank existiert, öffnen wir sie
+                        try {
+                            Log.d(TAG, "Opening existing database at: " + dbPath);
+                            db = SQLiteDatabase.openDatabase(dbPath, null, SQLiteDatabase.OPEN_READWRITE);
+                            return db;
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error opening existing database at " + dbPath + ": " + e.getMessage(), e);
+                            
+                            // Versuche, die Datei zu löschen und neu zu erstellen, wenn sie beschädigt ist
+                            try {
+                                Log.d(TAG, "Attempting to delete and recreate database");
+                                boolean deleted = dbFile.delete();
+                                Log.d(TAG, "Database file deleted: " + deleted);
+                                
+                                db = SQLiteDatabase.openOrCreateDatabase(dbFile, null);
+                                onCreate(db);
+                                Log.d(TAG, "Recreated database at: " + dbPath);
+                                return db;
+                            } catch (Exception e2) {
+                                Log.e(TAG, "Error recreating database: " + e2.getMessage(), e2);
+                                // Fallback auf super-Implementierung
+                                Log.d(TAG, "Falling back to default implementation after recreation error");
+                                return super.getWritableDatabase();
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error accessing database path " + dbPath + ": " + e.getMessage(), e);
                 }
-                
-                // Prüfen, ob die Datenbank existiert
-                if (!dbFile.exists()) {
-                    // Wenn die Datenbank nicht existiert, erstellen wir sie
-                    SQLiteDatabase db = SQLiteDatabase.openOrCreateDatabase(dbFile, null);
-                    onCreate(db);
-                    Log.d(TAG, "Created new database at: " + dbPath);
-                    return db;
-                } else {
-                    // Wenn die Datenbank existiert, öffnen wir sie
-                    Log.d(TAG, "Opening existing database at: " + dbPath);
-                    return SQLiteDatabase.openDatabase(dbPath, null, SQLiteDatabase.OPEN_READWRITE);
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error opening writable database at " + dbPath + ": " + e.getMessage(), e);
             }
+            
+            // Wenn wir hier ankommen, verwenden wir die Standard-Implementierung
+            Log.d(TAG, "Using default getWritableDatabase() implementation");
+            return super.getWritableDatabase();
+        } catch (Exception e) {
+            Log.e(TAG, "Critical error in getWritableDatabase: " + e.getMessage(), e);
+            throw e;
         }
-        
-        Log.d(TAG, "Falling back to default getWritableDatabase()");
-        return super.getWritableDatabase();
     }
     
     @Override
