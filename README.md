@@ -1,6 +1,6 @@
 # ContactsPlugin for ATAK
 
-Version 1.2.1
+Version 1.2.0
 
 _________________________________________________________________
 ## PURPOSE AND CAPABILITIES
@@ -21,12 +21,11 @@ ContactsPlugin is an ATAK plugin that allows users to manage contacts within the
 - Copy coordinates to clipboard for use in other applications
 - Version information and publisher details
 - Optimized UI layout for maximum contact visibility
-- Robust error handling and recovery system
 
 _________________________________________________________________
 ## STATUS
 
-Released: Version 1.2.1 (March 2025)  
+Released: Version 1.2.0 (March 2025)  
 Compatibility: ATAK-CIV 5.3.0.12 and higher
 
 _________________________________________________________________
@@ -154,20 +153,10 @@ For developers interested in extending or modifying this plugin, the source code
 - Model-View-Controller design pattern
 - Singleton database helper
 - Transaction-based database operations
-- Comprehensive error handling and recovery system
-- Detailed logging for debugging and troubleshooting
+- Robust error handling and logging
 
 _________________________________________________________________
 ## VERSION HISTORY
-
-### Version 1.2.1 (March 2025)
-- Implemented robust error handling and recovery system
-- Added centralized error management with severity levels
-- Improved error logging with detailed information
-- Added automatic recovery strategies for common errors
-- Enhanced UI error handling for better user experience
-- Improved plugin stability and reliability
-- Fixed various minor bugs and issues
 
 ### Version 1.2.0 (March 2025)
 - Added location functionality to store and display contact locations

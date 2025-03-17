@@ -14,21 +14,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Datenbank-Helper für die Contacts-Datenbank
+ * Database helper for the Contacts database
  */
 public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String TAG = "ContactsDB";
     
-    // Datenbankversion
+    // Database version
     private static final int DATABASE_VERSION = 2;
     
-    // Datenbankname
+    // Database name
     private static final String DATABASE_NAME = "contacts_db";
     
-    // Tabellennamen
+    // Table names
     public static final String TABLE_CONTACTS = "contacts";
     
-    // Spaltennamen
+    // Column names
     public static final String KEY_ID = "id";
     public static final String KEY_NAME = "name";
     public static final String KEY_PHONE = "phone";
@@ -36,7 +36,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     public static final String KEY_LATITUDE = "latitude";
     public static final String KEY_LONGITUDE = "longitude";
     
-    // SQL-Anweisung zum Erstellen der Tabelle
+    // SQL statement to create the table
     private static final String CREATE_TABLE_CONTACTS = "CREATE TABLE " + TABLE_CONTACTS + "("
             + KEY_ID + " INTEGER PRIMARY KEY,"
             + KEY_NAME + " TEXT,"
@@ -49,7 +49,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private String dbPath;
     
     /**
-     * Singleton-Pattern für den Datenbankzugriff
+     * Singleton pattern for database access
      */
     public static synchronized DatabaseHelper getInstance(Context context) {
         if (instance == null) {
@@ -76,7 +76,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                     Log.d(TAG, "Database path from context: " + dbPath);
                 } catch (Exception e) {
                     Log.e(TAG, "Error getting database path from context: " + e.getMessage());
-                    // Fallback: Verwende externen Speicher
+                    // Fallback: Use external storage
                     dbPath = getAlternativeDatabasePath(context);
                 }
             } else {
@@ -97,15 +97,15 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
     
     /**
-     * Erzeugt einen alternativen Pfad für die Datenbank, falls der normale Pfad nicht verfügbar ist
+     * Creates an alternative path for the database if the normal path is not available
      */
     private String getAlternativeDatabasePath(Context context) {
         try {
-            // Versuche externen Speicher zu verwenden
+            // Try to use external storage
             File externalDir;
             
             if (context != null) {
-                // Versuche app-spezifischen externen Speicher
+                // Try app-specific external storage
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
                     File[] externalDirs = context.getExternalFilesDirs(null);
                     if (externalDirs != null && externalDirs.length > 0 && externalDirs[0] != null) {
@@ -120,7 +120,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 }
             }
             
-            // Fallback: Verwende Standard-externen Speicher
+            // Fallback: Use standard external storage
             externalDir = new File(android.os.Environment.getExternalStorageDirectory(), "ATAK/plugins/contacts/databases");
             if (!externalDir.exists()) {
                 externalDir.mkdirs();
@@ -132,7 +132,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         } catch (Exception e) {
             Log.e(TAG, "Error creating alternative database path: " + e.getMessage(), e);
             
-            // Letzter Fallback: Verwende temporären Speicher
+            // Last fallback: Use temporary storage
             String tempPath = System.getProperty("java.io.tmpdir");
             if (tempPath == null) {
                 tempPath = "/data/local/tmp";
@@ -148,7 +148,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         try {
             Log.d(TAG, "Creating database tables");
             
-            // Prüfe, ob die Tabelle bereits existiert
+            // Check if the table already exists
             Cursor cursor = null;
             boolean tableExists = false;
             try {
@@ -163,7 +163,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 }
             }
             
-            // Wenn die Tabelle bereits existiert, prüfe, ob sie die richtigen Spalten hat
+            // If the table already exists, check if it has the right columns
             if (tableExists) {
                 Log.d(TAG, "Table already exists, checking columns");
                 
@@ -187,7 +187,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                     Log.e(TAG, "Error checking table columns: " + e.getMessage(), e);
                 }
                 
-                // Wenn die Standortspalten fehlen, füge sie hinzu
+                // If the location columns are missing, add them
                 if (!hasLocationColumns) {
                     Log.d(TAG, "Adding location columns to existing table");
                     try {
@@ -197,7 +197,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                     } catch (Exception e) {
                         Log.e(TAG, "Error adding location columns: " + e.getMessage(), e);
                         
-                        // Wenn das Hinzufügen der Spalten fehlschlägt, erstelle die Tabelle neu
+                        // If adding columns fails, recreate the table
                         try {
                             Log.d(TAG, "Recreating table after column add failure");
                             db.execSQL("DROP TABLE IF EXISTS " + TABLE_CONTACTS);
@@ -209,7 +209,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                     }
                 }
             } else {
-                // Wenn die Tabelle nicht existiert, erstelle sie
+                // If the table doesn't exist, create it
                 Log.d(TAG, "Table does not exist, creating it");
                 db.execSQL(CREATE_TABLE_CONTACTS);
                 Log.d(TAG, "Table created successfully");
@@ -217,7 +217,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         } catch (Exception e) {
             Log.e(TAG, "Error creating database tables: " + e.getMessage(), e);
             
-            // Letzter Versuch, die Tabelle zu erstellen
+            // Last attempt to create the table
             try {
                 Log.d(TAG, "Last attempt to create table");
                 db.execSQL(CREATE_TABLE_CONTACTS);
@@ -234,7 +234,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         
         try {
             if (oldVersion < 2) {
-                // Upgrade von Version 1 auf 2: Hinzufügen der Standortspalten
+                // Upgrade from version 1 to 2: Adding location columns
                 db.execSQL("ALTER TABLE " + TABLE_CONTACTS + " ADD COLUMN " + KEY_LATITUDE + " REAL;");
                 db.execSQL("ALTER TABLE " + TABLE_CONTACTS + " ADD COLUMN " + KEY_LONGITUDE + " REAL;");
                 Log.d(TAG, "Added location columns to contacts table");
@@ -245,8 +245,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
     
     /**
-     * Fügt einen neuen Kontakt in die Datenbank ein
-     * @return ID des neuen Kontakts oder -1 bei Fehler
+     * Adds a new contact to the database
+     * @return ID of the new contact or -1 on error
      */
     public long addContact(Contact contact) {
         long id = -1;

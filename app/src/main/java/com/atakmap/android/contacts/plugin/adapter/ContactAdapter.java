@@ -12,9 +12,6 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.atakmap.android.contacts.plugin.R;
 import com.atakmap.android.contacts.plugin.model.Contact;
-// Comment out error handler imports for debugging
-// import com.atakmap.android.contacts.plugin.util.ErrorHandler;
-// import com.atakmap.android.contacts.plugin.util.UIErrorHandler;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,9 +26,6 @@ public class ContactAdapter extends RecyclerView.Adapter<ContactAdapter.ViewHold
     private List<Contact> contactListFull; // Original list for filtering
     private final Context context;
     private final OnContactClickListener listener;
-    // Comment out error handlers for debugging
-    // private ErrorHandler errorHandler;
-    // private UIErrorHandler uiErrorHandler;
     
     /**
      * Interface for click events on contacts
@@ -67,7 +61,7 @@ public class ContactAdapter extends RecyclerView.Adapter<ContactAdapter.ViewHold
                     });
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error binding contact to view: " + e.getMessage(), e);
+                Log.e(TAG, "Error binding contact to view", e);
             }
         }
     }
@@ -79,29 +73,21 @@ public class ContactAdapter extends RecyclerView.Adapter<ContactAdapter.ViewHold
      * @param listener Click listener
      */
     public ContactAdapter(Context context, List<Contact> contactList, OnContactClickListener listener) {
-        Log.d(TAG, "ContactAdapter constructor started");
         this.context = context;
         this.contactList = contactList;
         this.contactListFull = new ArrayList<>(contactList); // Create a copy for filtering
         this.listener = listener;
-        
-        // Initialize error handlers - commented out for debugging
-        // this.errorHandler = ErrorHandler.getInstance(context);
-        // this.uiErrorHandler = UIErrorHandler.getInstance(context);
-        Log.d(TAG, "ContactAdapter constructor completed");
     }
     
     @NonNull
     @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         try {
-            Log.d(TAG, "onCreateViewHolder called");
-            // Use standard inflate instead of UIErrorHandler
-            View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_contact, parent, false);
+            View view = LayoutInflater.from(parent.getContext())
+                    .inflate(R.layout.item_contact, parent, false);
             return new ViewHolder(view);
         } catch (Exception e) {
-            Log.e(TAG, "Error creating ViewHolder: " + e.getMessage(), e);
-            
+            Log.e(TAG, "Error creating ViewHolder", e);
             // Fallback for unexpected case
             View errorView = new View(parent.getContext());
             return new ViewHolder(errorView);
@@ -111,13 +97,12 @@ public class ContactAdapter extends RecyclerView.Adapter<ContactAdapter.ViewHold
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         try {
-            Log.d(TAG, "onBindViewHolder called for position " + position);
             if (position < contactList.size()) {
                 Contact contact = contactList.get(position);
                 holder.bind(contact, listener);
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error binding ViewHolder at position " + position + ": " + e.getMessage(), e);
+            Log.e(TAG, "Error binding ViewHolder at position " + position, e);
         }
     }
     

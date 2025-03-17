@@ -1,24 +1,24 @@
 package com.atakmap.android.contacts.plugin.model;
 
 /**
- * Datenmodell für einen Kontakt
+ * Data model for a contact
  */
 public class Contact {
     private long id;
     private String name;
     private String phoneNumber;
     private String notes;
-    // Neue Felder für Standortinformationen
+    // New fields for location information
     private Double latitude;
     private Double longitude;
     private boolean hasLocation;
 
-    // Standard-Konstruktor
+    // Default constructor
     public Contact() {
         this.hasLocation = false;
     }
 
-    // Konstruktor für neue Kontakte (ohne ID)
+    // Constructor for new contacts (without ID)
     public Contact(String name, String phoneNumber, String notes) {
         this.name = name;
         this.phoneNumber = phoneNumber;
@@ -26,7 +26,7 @@ public class Contact {
         this.hasLocation = false;
     }
 
-    // Konstruktor für neue Kontakte mit Standort
+    // Constructor for new contacts with location
     public Contact(String name, String phoneNumber, String notes, Double latitude, Double longitude) {
         this.name = name;
         this.phoneNumber = phoneNumber;
@@ -36,7 +36,7 @@ public class Contact {
         this.hasLocation = (latitude != null && longitude != null);
     }
 
-    // Vollständiger Konstruktor
+    // Complete constructor
     public Contact(long id, String name, String phoneNumber, String notes) {
         this.id = id;
         this.name = name;
@@ -45,7 +45,7 @@ public class Contact {
         this.hasLocation = false;
     }
 
-    // Vollständiger Konstruktor mit Standort
+    // Complete constructor with location
     public Contact(long id, String name, String phoneNumber, String notes, Double latitude, Double longitude) {
         this.id = id;
         this.name = name;
@@ -56,7 +56,7 @@ public class Contact {
         this.hasLocation = (latitude != null && longitude != null);
     }
 
-    // Getter und Setter
+    // Getters and Setters
     public long getId() {
         return id;
     }
@@ -89,7 +89,7 @@ public class Contact {
         this.notes = notes;
     }
 
-    // Neue Getter und Setter für Standortinformationen
+    // New getters and setters for location information
     public Double getLatitude() {
         return latitude;
     }
@@ -112,19 +112,19 @@ public class Contact {
         return hasLocation;
     }
 
-    // Hilfsmethode, um hasLocation zu aktualisieren
+    // Helper method to update hasLocation
     private void updateHasLocation() {
         this.hasLocation = (latitude != null && longitude != null);
     }
 
-    // Methode zum Setzen des Standorts
+    // Method to set location
     public void setLocation(Double latitude, Double longitude) {
         this.latitude = latitude;
         this.longitude = longitude;
         updateHasLocation();
     }
 
-    // Methode zum Löschen des Standorts
+    // Method to clear location
     public void clearLocation() {
         this.latitude = null;
         this.longitude = null;
