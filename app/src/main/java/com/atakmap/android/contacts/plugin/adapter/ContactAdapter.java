@@ -12,12 +12,15 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.atakmap.android.contacts.plugin.R;
 import com.atakmap.android.contacts.plugin.model.Contact;
+// Comment out error handler imports for debugging
+// import com.atakmap.android.contacts.plugin.util.ErrorHandler;
+// import com.atakmap.android.contacts.plugin.util.UIErrorHandler;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Adapter für die Anzeige von Kontakten in einer RecyclerView
+ * Adapter for displaying contacts in a RecyclerView
  */
 public class ContactAdapter extends RecyclerView.Adapter<ContactAdapter.ViewHolder> {
     
@@ -26,16 +29,19 @@ public class ContactAdapter extends RecyclerView.Adapter<ContactAdapter.ViewHold
     private List<Contact> contactListFull; // Original list for filtering
     private final Context context;
     private final OnContactClickListener listener;
+    // Comment out error handlers for debugging
+    // private ErrorHandler errorHandler;
+    // private UIErrorHandler uiErrorHandler;
     
     /**
-     * Interface für Klick-Events auf Kontakte
+     * Interface for click events on contacts
      */
     public interface OnContactClickListener {
         void onContactClick(Contact contact);
     }
     
     /**
-     * ViewHolder für einen Kontakteintrag
+     * ViewHolder for a contact entry
      */
     public static class ViewHolder extends RecyclerView.ViewHolder {
         public TextView nameTextView;
@@ -53,7 +59,7 @@ public class ContactAdapter extends RecyclerView.Adapter<ContactAdapter.ViewHold
                     nameTextView.setText(contact.getName());
                     phoneTextView.setText(contact.getPhoneNumber());
                     
-                    // Klick-Listener für den gesamten Eintrag
+                    // Click listener for the entire entry
                     itemView.setOnClickListener(v -> {
                         if (listener != null) {
                             listener.onContactClick(contact);
@@ -61,34 +67,42 @@ public class ContactAdapter extends RecyclerView.Adapter<ContactAdapter.ViewHold
                     });
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error binding contact to view", e);
+                Log.e(TAG, "Error binding contact to view: " + e.getMessage(), e);
             }
         }
     }
     
     /**
-     * Konstruktor
-     * @param context Kontext
-     * @param contactList Liste der anzuzeigenden Kontakte
-     * @param listener Click-Listener
+     * Constructor
+     * @param context Context
+     * @param contactList List of contacts to display
+     * @param listener Click listener
      */
     public ContactAdapter(Context context, List<Contact> contactList, OnContactClickListener listener) {
+        Log.d(TAG, "ContactAdapter constructor started");
         this.context = context;
         this.contactList = contactList;
         this.contactListFull = new ArrayList<>(contactList); // Create a copy for filtering
         this.listener = listener;
+        
+        // Initialize error handlers - commented out for debugging
+        // this.errorHandler = ErrorHandler.getInstance(context);
+        // this.uiErrorHandler = UIErrorHandler.getInstance(context);
+        Log.d(TAG, "ContactAdapter constructor completed");
     }
     
     @NonNull
     @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         try {
-            View view = LayoutInflater.from(parent.getContext())
-                    .inflate(R.layout.item_contact, parent, false);
+            Log.d(TAG, "onCreateViewHolder called");
+            // Use standard inflate instead of UIErrorHandler
+            View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_contact, parent, false);
             return new ViewHolder(view);
         } catch (Exception e) {
-            Log.e(TAG, "Error creating ViewHolder", e);
-            // Fallback für den unerwarteten Fall
+            Log.e(TAG, "Error creating ViewHolder: " + e.getMessage(), e);
+            
+            // Fallback for unexpected case
             View errorView = new View(parent.getContext());
             return new ViewHolder(errorView);
         }
@@ -97,12 +111,13 @@ public class ContactAdapter extends RecyclerView.Adapter<ContactAdapter.ViewHold
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         try {
+            Log.d(TAG, "onBindViewHolder called for position " + position);
             if (position < contactList.size()) {
                 Contact contact = contactList.get(position);
                 holder.bind(contact, listener);
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error binding ViewHolder at position " + position, e);
+            Log.e(TAG, "Error binding ViewHolder at position " + position + ": " + e.getMessage(), e);
         }
     }
     
@@ -112,8 +127,8 @@ public class ContactAdapter extends RecyclerView.Adapter<ContactAdapter.ViewHold
     }
     
     /**
-     * Aktualisiert die Kontaktliste
-     * @param newContacts Neue Kontaktliste
+     * Updates the contact list
+     * @param newContacts New contact list
      */
     public void updateContacts(List<Contact> newContacts) {
         try {
@@ -143,8 +158,8 @@ public class ContactAdapter extends RecyclerView.Adapter<ContactAdapter.ViewHold
     }
     
     /**
-     * Filtert die Kontaktliste basierend auf dem Suchbegriff
-     * @param query Suchbegriff
+     * Filters the contact list based on the search term
+     * @param query Search term
      */
     public void filter(String query) {
         try {

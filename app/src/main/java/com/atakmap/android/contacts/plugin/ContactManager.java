@@ -27,13 +27,15 @@ import com.atak.plugins.impl.PluginLayoutInflater;
 import com.atakmap.android.contacts.plugin.adapter.ContactAdapter;
 import com.atakmap.android.contacts.plugin.db.DatabaseHelper;
 import com.atakmap.android.contacts.plugin.model.Contact;
+import com.atakmap.android.contacts.plugin.util.ErrorHandler;
+import com.atakmap.android.contacts.plugin.util.UIErrorHandler;
 import com.atakmap.android.maps.MapView;
 import com.atakmap.android.maps.Marker;
 
 import java.util.ArrayList;
 import java.util.List;
 
-// Neue Imports für Standortfunktionalität
+// New imports for location functionality
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.location.Location;
@@ -44,7 +46,7 @@ import androidx.core.content.ContextCompat;
 import com.atakmap.coremap.maps.coords.GeoPoint;
 
 /**
- * Manager-Klasse für Kontakte, der die UI- und Datenbankoperationen koordiniert
+ * Manager class for contacts that coordinates UI and database operations
  */
 public class ContactManager implements ContactAdapter.OnContactClickListener {
     private static final String TAG = "ContactManager";
@@ -57,29 +59,34 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
     private TextView emptyView;
     private final List<Contact> contactList = new ArrayList<>();
     
-    // Temporäre Variablen für Standortinformationen während der Kontakterstellung
+    // Error handlers
+    private ErrorHandler errorHandler;
+    private UIErrorHandler uiErrorHandler;
+    
+    // Temporary variables for location information during contact creation
     private Double tempLatitude;
     private Double tempLongitude;
     private boolean hasLocationPermission = false;
     
     /**
-     * Konstruktor für den ContactManager
-     * @param context Der Kontext der Anwendung
-     * @param mainView Die Hauptansicht des Plugins
+     * Constructor for the ContactManager
+     * @param context The application context
+     * @param mainView The main view of the plugin
      */
     public ContactManager(Context context, View mainView) {
         try {
+            Log.d(TAG, "ContactManager constructor started");
             if (context == null) {
                 Log.e(TAG, "Context is null in ContactManager constructor");
-                // Versuche, einen gültigen Kontext zu bekommen
+                // Try to get a valid context
                 context = mainView.getContext();
                 if (context == null) {
-                    // Als letzten Versuch, versuche den MapView-Kontext
+                    // As a last resort, try to get the MapView context
                     try {
                         context = MapView.getMapView().getContext();
                         Log.d(TAG, "Using MapView context as fallback");
                     } catch (Exception e) {
-                        Log.e(TAG, "Failed to get MapView context: " + e.getMessage());
+                        Log.e(TAG, "Failed to get MapView context: " + e.getMessage(), e);
                         throw new IllegalArgumentException("Cannot initialize ContactManager with null context");
                     }
                 } else {
@@ -89,11 +96,44 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
             
             this.pluginContext = context;
             this.mainView = mainView;
-            Log.d(TAG, "Initializing DatabaseHelper with context: " + context);
-            this.dbHelper = DatabaseHelper.getInstance(context);
             
-            setupViews();
-            loadContacts();
+            // Initialize error handlers - temporarily comment out for debugging
+            try {
+                Log.d(TAG, "Initializing error handlers");
+                this.errorHandler = ErrorHandler.getInstance(context);
+                this.uiErrorHandler = UIErrorHandler.getInstance(context);
+                Log.d(TAG, "Error handlers initialized successfully");
+            } catch (Exception e) {
+                Log.e(TAG, "Error initializing error handlers: " + e.getMessage(), e);
+                // Continue without error handlers
+            }
+            
+            try {
+                Log.d(TAG, "Initializing DatabaseHelper with context: " + context);
+                this.dbHelper = DatabaseHelper.getInstance(context);
+                Log.d(TAG, "DatabaseHelper initialized successfully");
+            } catch (Exception e) {
+                Log.e(TAG, "Error initializing DatabaseHelper: " + e.getMessage(), e);
+                throw e;
+            }
+            
+            try {
+                Log.d(TAG, "Setting up views");
+                setupViews();
+                Log.d(TAG, "Views set up successfully");
+            } catch (Exception e) {
+                Log.e(TAG, "Error setting up views: " + e.getMessage(), e);
+            }
+            
+            try {
+                Log.d(TAG, "Loading contacts");
+                loadContacts();
+                Log.d(TAG, "Contacts loaded successfully");
+            } catch (Exception e) {
+                Log.e(TAG, "Error loading contacts: " + e.getMessage(), e);
+            }
+            
+            Log.d(TAG, "ContactManager constructor completed successfully");
         } catch (Exception e) {
             Log.e(TAG, "Error initializing ContactManager: " + e.getMessage(), e);
             throw e;
@@ -101,53 +141,88 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
     }
     
     /**
-     * Initialisiert die UI-Elemente
+     * Initializes the UI elements
      */
     private void setupViews() {
         try {
+            Log.d(TAG, "Finding UI elements");
             Button addButton = mainView.findViewById(R.id.btn_add_contact);
+            if (addButton == null) {
+                Log.e(TAG, "Add button not found");
+            }
+            
             recyclerView = mainView.findViewById(R.id.rv_contacts);
+            if (recyclerView == null) {
+                Log.e(TAG, "RecyclerView not found");
+            }
+            
             emptyView = mainView.findViewById(R.id.tv_empty_view);
+            if (emptyView == null) {
+                Log.e(TAG, "Empty view not found");
+            }
+            
             EditText searchEditText = mainView.findViewById(R.id.et_search_contacts);
+            if (searchEditText == null) {
+                Log.e(TAG, "Search EditText not found");
+            }
+            
             ImageButton infoButton = mainView.findViewById(R.id.btn_info);
+            if (infoButton == null) {
+                Log.e(TAG, "Info button not found");
+            }
             
-            // RecyclerView einrichten
-            recyclerView.setLayoutManager(new LinearLayoutManager(pluginContext));
-            adapter = new ContactAdapter(pluginContext, contactList, this);
-            recyclerView.setAdapter(adapter);
+            Log.d(TAG, "Setting up RecyclerView");
+            // Set up RecyclerView
+            if (recyclerView != null) {
+                recyclerView.setLayoutManager(new LinearLayoutManager(pluginContext));
+                adapter = new ContactAdapter(pluginContext, contactList, this);
+                recyclerView.setAdapter(adapter);
+                Log.d(TAG, "RecyclerView set up successfully");
+            }
             
-            // Klick-Listener für den "Add Contact" Button
-            addButton.setOnClickListener(v -> showAddContactDialog());
+            // Click listener for the "Add Contact" button
+            if (addButton != null) {
+                Log.d(TAG, "Setting up Add button click listener");
+                addButton.setOnClickListener(v -> showAddContactDialog());
+            }
             
-            // Klick-Listener für den Info-Button
-            infoButton.setOnClickListener(v -> showInfoDialog());
+            // Click listener for the Info button
+            if (infoButton != null) {
+                Log.d(TAG, "Setting up Info button click listener");
+                infoButton.setOnClickListener(v -> showInfoDialog());
+            }
             
-            // TextWatcher für die Suche einrichten
-            searchEditText.addTextChangedListener(new android.text.TextWatcher() {
-                @Override
-                public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-                    // Nicht benötigt
-                }
-                
-                @Override
-                public void onTextChanged(CharSequence s, int start, int before, int count) {
-                    // Filter die Kontaktliste basierend auf dem Suchtext
-                    filterContacts(s.toString());
-                }
-                
-                @Override
-                public void afterTextChanged(android.text.Editable s) {
-                    // Nicht benötigt
-                }
-            });
+            // Set up TextWatcher for search
+            if (searchEditText != null) {
+                Log.d(TAG, "Setting up search TextWatcher");
+                searchEditText.addTextChangedListener(new android.text.TextWatcher() {
+                    @Override
+                    public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+                        // Not needed
+                    }
+                    
+                    @Override
+                    public void onTextChanged(CharSequence s, int start, int before, int count) {
+                        // Filter the contact list based on the search text
+                        filterContacts(s.toString());
+                    }
+                    
+                    @Override
+                    public void afterTextChanged(android.text.Editable s) {
+                        // Not needed
+                    }
+                });
+            }
+            
+            Log.d(TAG, "Views setup completed");
         } catch (Exception e) {
-            Log.e(TAG, "Error setting up views", e);
+            Log.e(TAG, "Error in setupViews: " + e.getMessage(), e);
         }
     }
     
     /**
-     * Filtert die Kontaktliste basierend auf dem Suchbegriff
-     * @param query Suchbegriff
+     * Filters the contact list based on the search term
+     * @param query Search term
      */
     private void filterContacts(String query) {
         try {
@@ -162,7 +237,7 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                 
                 Log.d(TAG, "Filter results: " + resultCount + " contacts found for query: '" + query + "'");
                 
-                // Anzeigen der leeren Ansicht, wenn keine Suchergebnisse gefunden wurden
+                // Show empty view if no search results were found
                 if (resultCount == 0) {
                     // Hide the recyclerview
                     if (recyclerView != null) {
@@ -191,12 +266,12 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                 }
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error filtering contacts: " + e.getMessage(), e);
+            errorHandler.handleException(TAG, "Error filtering contacts", e);
         }
     }
     
     /**
-     * Lädt alle Kontakte aus der Datenbank
+     * Loads all contacts from the database
      */
     public void loadContacts() {
         try {
@@ -204,7 +279,8 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
             
             // Safety check for adapter and recyclerView
             if (adapter == null || recyclerView == null) {
-                Log.e(TAG, "Adapter or RecyclerView is null, cannot load contacts");
+                errorHandler.handleException(TAG, "Adapter or RecyclerView is null, cannot load contacts", 
+                                           new IllegalStateException("Adapter or RecyclerView is null"));
                 return;
             }
             
@@ -220,7 +296,8 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                 }
                 contactList.addAll(contacts);
             } else {
-                Log.e(TAG, "Database returned null contact list");
+                errorHandler.handleException(TAG, "Database returned null contact list", 
+                                           new NullPointerException("Contact list is null"));
             }
             
             // Apply the data to the adapter
@@ -231,7 +308,7 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
             // Force update UI based on current data
             updateContactsUI();
         } catch (Exception e) {
-            Log.e(TAG, "Error loading contacts: " + e.getMessage(), e);
+            errorHandler.handleException(TAG, "Error loading contacts", e);
         }
     }
     
@@ -266,64 +343,63 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                 Log.d(TAG, "No contacts found, showing empty view");
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error updating contacts UI: " + e.getMessage(), e);
+            errorHandler.handleException(TAG, "Error updating contacts UI", e);
         }
     }
     
     /**
-     * Zeigt den Dialog zum Hinzufügen eines neuen Kontakts
+     * Shows the dialog for adding a new contact
      */
     private void showAddContactDialog() {
         try {
             Log.d(TAG, "Showing add contact dialog");
             
-            // Verwende den MapView-Kontext für den Dialog, da dieser ein gültiger Activity-Kontext ist
+            // Use the MapView context for the dialog, as it is a valid Activity context
             MapView mapView = MapView.getMapView();
             if (mapView == null) {
-                Log.e(TAG, "MapView is null");
-                Toast.makeText(pluginContext, "Error: Could not access MapView", Toast.LENGTH_SHORT).show();
+                errorHandler.handleException(TAG, "MapView is null", 
+                                           new IllegalStateException("MapView is null"));
                 return;
             }
             
             final Context dialogContext = mapView.getContext();
             if (dialogContext == null) {
-                Log.e(TAG, "MapView context is null");
-                Toast.makeText(pluginContext, "Error: Could not create dialog context", Toast.LENGTH_SHORT).show();
+                errorHandler.handleException(TAG, "MapView context is null", 
+                                           new IllegalStateException("MapView context is null"));
                 return;
             }
             
-            // Stelle sicher, dass der Dialog auf dem UI-Thread erstellt wird
+            // Make sure the dialog is created on the UI thread
             mapView.post(() -> {
                 try {
-                    // Dialog-Layout inflaten
+                    // Inflate dialog layout using safe inflate
                     Log.d(TAG, "Inflating dialog layout");
                     AlertDialog.Builder builder = new AlertDialog.Builder(dialogContext);
                     View dialogView;
                     try {
-                        dialogView = LayoutInflater.from(pluginContext).inflate(R.layout.dialog_add_edit_contact, null);
+                        dialogView = uiErrorHandler.safeInflate(R.layout.dialog_add_edit_contact, null, false);
                     } catch (Exception e) {
-                        Log.e(TAG, "Error inflating dialog layout: " + e.getMessage(), e);
-                        Toast.makeText(dialogContext, "Error: Could not create dialog layout", Toast.LENGTH_SHORT).show();
+                        errorHandler.handleException(TAG, "Error inflating dialog layout", e);
                         return;
                     }
                     
                     builder.setView(dialogView);
                     
-                    // UI-Elemente referenzieren mit Fehlerprüfung
+                    // Reference UI elements with error checking
                     Log.d(TAG, "Finding UI elements");
                     EditText nameEditText = dialogView.findViewById(R.id.et_contact_name);
                     if (nameEditText == null) {
-                        Log.e(TAG, "Could not find et_contact_name");
-                        Toast.makeText(dialogContext, "Error: Dialog layout is incomplete", Toast.LENGTH_SHORT).show();
+                        errorHandler.handleException(TAG, "Could not find et_contact_name", 
+                                                   new NullPointerException("nameEditText is null"));
                         return;
                     }
                     
                     EditText phoneEditText = dialogView.findViewById(R.id.et_contact_phone);
                     EditText notesEditText = dialogView.findViewById(R.id.et_contact_notes);
-            Button cancelButton = dialogView.findViewById(R.id.btn_cancel);
-            Button saveButton = dialogView.findViewById(R.id.btn_save);
-            
-                    // Standort-UI-Elemente
+                    Button cancelButton = dialogView.findViewById(R.id.btn_cancel);
+                    Button saveButton = dialogView.findViewById(R.id.btn_save);
+                    
+                    // Location UI elements
                     Button currentLocationButton = dialogView.findViewById(R.id.btn_current_location);
                     Button enterCoordinatesButton = dialogView.findViewById(R.id.btn_enter_coordinates);
                     LinearLayout coordinatesLayout = dialogView.findViewById(R.id.layout_coordinates);
@@ -331,41 +407,41 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                     EditText longitudeEditText = dialogView.findViewById(R.id.et_longitude);
                     Button clearLocationButton = dialogView.findViewById(R.id.btn_clear_location);
                     
-                    // Prüfen, ob alle wichtigen UI-Elemente gefunden wurden
+                    // Check if all important UI elements were found
                     if (saveButton == null || cancelButton == null) {
-                        Log.e(TAG, "Could not find essential buttons in dialog");
-                        Toast.makeText(dialogContext, "Error: Dialog layout is incomplete", Toast.LENGTH_SHORT).show();
+                        errorHandler.handleException(TAG, "Could not find essential buttons in dialog", 
+                                                   new NullPointerException("Essential buttons are null"));
                         return;
                     }
                     
-                    // Temporäre Standortvariablen zurücksetzen
+                    // Reset temporary location variables
                     tempLatitude = null;
                     tempLongitude = null;
                     
-                    // Dialog erstellen
+                    // Create dialog
                     Log.d(TAG, "Creating dialog");
                     final AlertDialog dialog = builder.create();
                     
-                    // Aktuellen Standort-Button
+                    // Current location button
                     if (currentLocationButton != null) {
                         currentLocationButton.setOnClickListener(v -> {
                             try {
                                 getCurrentLocation();
                                 if (tempLatitude != null && tempLongitude != null && coordinatesLayout != null) {
-                                    // Koordinaten anzeigen
+                                    // Show coordinates
                                     coordinatesLayout.setVisibility(View.VISIBLE);
                                     if (latitudeEditText != null) latitudeEditText.setText(String.valueOf(tempLatitude));
                                     if (longitudeEditText != null) longitudeEditText.setText(String.valueOf(tempLongitude));
-                    } else {
+                                } else {
                                     Toast.makeText(dialogContext, "Could not get current location", Toast.LENGTH_SHORT).show();
                                 }
                             } catch (Exception e) {
-                                Log.e(TAG, "Error in current location button click: " + e.getMessage(), e);
+                                errorHandler.handleException(TAG, "Error in current location button click", e);
                             }
                         });
                     }
                     
-                    // Koordinaten eingeben-Button
+                    // Enter coordinates button
                     if (enterCoordinatesButton != null) {
                         enterCoordinatesButton.setOnClickListener(v -> {
                             try {
@@ -375,7 +451,7 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                                             tempLatitude = coordinates[0];
                                             tempLongitude = coordinates[1];
                                             
-                                            // Koordinaten anzeigen
+                                            // Show coordinates
                                             if (coordinatesLayout != null) {
                                                 coordinatesLayout.setVisibility(View.VISIBLE);
                                                 if (latitudeEditText != null) latitudeEditText.setText(String.valueOf(tempLatitude));
@@ -383,16 +459,16 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                                             }
                                         }
                                     } catch (Exception e) {
-                                        Log.e(TAG, "Error processing coordinates: " + e.getMessage(), e);
+                                        errorHandler.handleException(TAG, "Error processing coordinates", e);
                                     }
                                 });
                             } catch (Exception e) {
-                                Log.e(TAG, "Error showing coordinates input dialog: " + e.getMessage(), e);
+                                errorHandler.handleException(TAG, "Error showing coordinates input dialog", e);
                             }
                         });
                     }
                     
-                    // Standort löschen-Button
+                    // Clear location button
                     if (clearLocationButton != null && coordinatesLayout != null) {
                         clearLocationButton.setOnClickListener(v -> {
                             tempLatitude = null;
@@ -401,7 +477,7 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                         });
                     }
                     
-                    // Koordinaten-Felder überwachen
+                    // Monitor coordinate fields
                     if (latitudeEditText != null) {
                         latitudeEditText.addTextChangedListener(new android.text.TextWatcher() {
                             @Override
@@ -415,7 +491,7 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                                 try {
                                     if (!TextUtils.isEmpty(s)) {
                                         tempLatitude = Double.parseDouble(s.toString());
-            } else {
+                                    } else {
                                         tempLatitude = null;
                                     }
                                 } catch (NumberFormatException e) {
@@ -448,42 +524,42 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                         });
                     }
                     
-                    // Cancel-Button
-            cancelButton.setOnClickListener(v -> dialog.dismiss());
-            
-                    // Save-Button
-            saveButton.setOnClickListener(v -> {
+                    // Cancel button
+                    cancelButton.setOnClickListener(v -> dialog.dismiss());
+                    
+                    // Save button
+                    saveButton.setOnClickListener(v -> {
                         try {
-                            // Eingaben validieren
+                            // Validate inputs
                             String name = nameEditText.getText().toString().trim();
                             String phone = phoneEditText != null ? phoneEditText.getText().toString().trim() : "";
                             String notes = notesEditText != null ? notesEditText.getText().toString().trim() : "";
                             
-                if (TextUtils.isEmpty(name)) {
+                            if (TextUtils.isEmpty(name)) {
                                 Toast.makeText(dialogContext, "Please enter a name", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                
-                            // Debug-Ausgabe für Standortdaten
+                                return;
+                            }
+                            
+                            // Debug output for location data
                             Log.d(TAG, "Saving contact with location data - tempLatitude: " + tempLatitude + ", tempLongitude: " + tempLongitude);
                             
-                            // Kontakt erstellen
+                            // Create contact
                             Contact newContact = new Contact(name, phone, notes);
                             
-                            // Standort separat setzen, wenn vorhanden
+                            // Set location separately if available
                             if (tempLatitude != null && tempLongitude != null) {
                                 newContact.setLocation(tempLatitude, tempLongitude);
                                 Log.d(TAG, "Setting location: " + tempLatitude + ", " + tempLongitude);
                                 Log.d(TAG, "Contact has location: " + newContact.hasLocation());
                             }
                             
-                            // Kontakt zur Datenbank hinzufügen
+                            // Add contact to database
                             Log.d(TAG, "Adding contact to database: " + newContact.toString());
                             long id = dbHelper.addContact(newContact);
                             Log.d(TAG, "Database returned ID: " + id);
                             
                             if (id != -1) {
-                                // Lade Kontakte neu, um die Liste zu aktualisieren
+                                // Reload contacts to update the list
                                 loadContacts();
                                 
                                 dialog.dismiss();
@@ -492,37 +568,27 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                                 Toast.makeText(dialogContext, "Failed to add contact", Toast.LENGTH_SHORT).show();
                             }
                         } catch (Exception e) {
-                            Log.e(TAG, "Error saving contact: " + e.getMessage(), e);
-                            Toast.makeText(dialogContext, "Error saving contact: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            errorHandler.handleException(TAG, "Error saving contact", e);
                         }
                     });
                     
                     Log.d(TAG, "Showing dialog");
                     dialog.show();
                 } catch (Exception e) {
-                    Log.e(TAG, "Error in UI thread showing dialog: " + e.getMessage(), e);
-                    Toast.makeText(dialogContext, "Error showing dialog: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    errorHandler.handleException(TAG, "Error showing add contact dialog", e);
                 }
             });
         } catch (Exception e) {
-            Log.e(TAG, "Error showing add contact dialog: " + e.getMessage(), e);
-            try {
-                // Versuche, eine detailliertere Fehlermeldung anzuzeigen
-                Context context = MapView.getMapView().getContext();
-                Toast.makeText(context, "Error showing dialog: " + e.getMessage(), Toast.LENGTH_LONG).show();
-            } catch (Exception ex) {
-                // Fallback, wenn alles andere fehlschlägt
-                Log.e(TAG, "Could not show error toast: " + ex.getMessage(), ex);
-            }
+            errorHandler.handleException(TAG, "Error preparing add contact dialog", e);
         }
     }
     
     /**
-     * Zeigt den Dialog zum Bearbeiten eines Kontakts
+     * Shows the dialog for editing a contact
      */
     public void showEditContactDialog(Contact contact) {
         try {
-            // Verwende den MapView-Kontext für den Dialog
+            // Use the MapView context for the dialog
             MapView mapView = MapView.getMapView();
             if (mapView == null) {
                 Log.e(TAG, "MapView is null");
@@ -537,15 +603,15 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                 return;
             }
             
-            // Stelle sicher, dass der Dialog auf dem UI-Thread erstellt wird
+            // Make sure the dialog is created on the UI thread
             mapView.post(() -> {
                 try {
-                    // Dialog-Layout inflaten
+                    // Inflate dialog layout
                     AlertDialog.Builder builder = new AlertDialog.Builder(dialogContext);
                     View dialogView = LayoutInflater.from(pluginContext).inflate(R.layout.dialog_add_edit_contact, null);
                     builder.setView(dialogView);
                     
-                    // UI-Elemente referenzieren
+                    // Reference UI elements
                     TextView titleTextView = dialogView.findViewById(R.id.tv_dialog_title);
                     EditText nameEditText = dialogView.findViewById(R.id.et_contact_name);
                     EditText phoneEditText = dialogView.findViewById(R.id.et_contact_phone);
@@ -553,7 +619,7 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                     Button cancelButton = dialogView.findViewById(R.id.btn_cancel);
                     Button saveButton = dialogView.findViewById(R.id.btn_save);
                     
-                    // Standort-UI-Elemente
+                    // Location UI elements
                     Button currentLocationButton = dialogView.findViewById(R.id.btn_current_location);
                     Button enterCoordinatesButton = dialogView.findViewById(R.id.btn_enter_coordinates);
                     LinearLayout coordinatesLayout = dialogView.findViewById(R.id.layout_coordinates);
@@ -561,19 +627,19 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                     EditText longitudeEditText = dialogView.findViewById(R.id.et_longitude);
                     Button clearLocationButton = dialogView.findViewById(R.id.btn_clear_location);
                     
-                    // Titel ändern
+                    // Title change
                     titleTextView.setText("Edit Contact");
                     
-                    // Kontaktdaten einfüllen
+                    // Fill contact data
                     nameEditText.setText(contact.getName());
                     phoneEditText.setText(contact.getPhoneNumber());
                     notesEditText.setText(contact.getNotes());
                     
-                    // Temporäre Standortvariablen setzen
+                    // Set temporary location variables
                     tempLatitude = contact.getLatitude();
                     tempLongitude = contact.getLongitude();
                     
-                    // Standortdaten anzeigen, wenn vorhanden
+                    // Show location data if available
                     if (contact.hasLocation()) {
                         coordinatesLayout.setVisibility(View.VISIBLE);
                         latitudeEditText.setText(String.valueOf(contact.getLatitude()));
@@ -582,14 +648,14 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                         coordinatesLayout.setVisibility(View.GONE);
                     }
                     
-                    // Dialog erstellen
+                    // Create dialog
                     final AlertDialog dialog = builder.create();
                     
-                    // Aktuellen Standort-Button
+                    // Current location button
                     currentLocationButton.setOnClickListener(v -> {
                         getCurrentLocation();
                         if (tempLatitude != null && tempLongitude != null) {
-                            // Koordinaten anzeigen
+                            // Show coordinates
                             coordinatesLayout.setVisibility(View.VISIBLE);
                             latitudeEditText.setText(String.valueOf(tempLatitude));
                             longitudeEditText.setText(String.valueOf(tempLongitude));
@@ -598,14 +664,14 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                         }
                     });
                     
-                    // Koordinaten eingeben-Button
+                    // Enter coordinates button
                     enterCoordinatesButton.setOnClickListener(v -> {
                         showCoordinatesInputDialog(coordinates -> {
                             if (coordinates != null && coordinates.length == 2) {
                                 tempLatitude = coordinates[0];
                                 tempLongitude = coordinates[1];
                                 
-                                // Koordinaten anzeigen
+                                // Show coordinates
                                 coordinatesLayout.setVisibility(View.VISIBLE);
                                 latitudeEditText.setText(String.valueOf(tempLatitude));
                                 longitudeEditText.setText(String.valueOf(tempLongitude));
@@ -613,14 +679,14 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                         });
                     });
                     
-                    // Standort löschen-Button
+                    // Clear location button
                     clearLocationButton.setOnClickListener(v -> {
                         tempLatitude = null;
                         tempLongitude = null;
                         coordinatesLayout.setVisibility(View.GONE);
                     });
                     
-                    // Koordinaten-Felder überwachen
+                    // Monitor coordinate fields
                     latitudeEditText.addTextChangedListener(new android.text.TextWatcher() {
                         @Override
                         public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -663,13 +729,13 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                         }
                     });
                     
-                    // Cancel-Button
+                    // Cancel button
                     cancelButton.setOnClickListener(v -> dialog.dismiss());
                     
-                    // Save-Button
+                    // Save button
                     saveButton.setOnClickListener(v -> {
                         try {
-                            // Eingaben validieren
+                            // Validate inputs
                             String name = nameEditText.getText().toString().trim();
                             String phone = phoneEditText.getText().toString().trim();
                             String notes = notesEditText.getText().toString().trim();
@@ -679,15 +745,15 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                                 return;
                             }
                             
-                            // Debug-Ausgabe für Standortdaten
+                            // Debug output for location data
                             Log.d(TAG, "Updating contact with location data - tempLatitude: " + tempLatitude + ", tempLongitude: " + tempLongitude);
                             
-                            // Kontakt aktualisieren
+                            // Update contact
                             contact.setName(name);
                             contact.setPhoneNumber(phone);
                             contact.setNotes(notes);
                             
-                            // Standort aktualisieren
+                            // Update location
                             if (tempLatitude != null && tempLongitude != null) {
                                 contact.setLocation(tempLatitude, tempLongitude);
                                 Log.d(TAG, "Setting location: " + tempLatitude + ", " + tempLongitude);
@@ -697,13 +763,13 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                                 Log.d(TAG, "Clearing location");
                             }
                             
-                            // Kontakt in der Datenbank aktualisieren
+                            // Update contact in database
                             Log.d(TAG, "Updating contact in database: " + contact.toString());
                             int result = dbHelper.updateContact(contact);
                             Log.d(TAG, "Database update result: " + result);
                             
                             if (result > 0) {
-                                // Lade Kontakte neu, um die Liste zu aktualisieren
+                                // Reload contacts to update the list
                                         loadContacts();
                                         
                                         dialog.dismiss();
@@ -712,29 +778,29 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                                 Toast.makeText(dialogContext, "Failed to update contact", Toast.LENGTH_SHORT).show();
                             }
                         } catch (Exception e) {
-                            Log.e(TAG, "Error updating contact: " + e.getMessage(), e);
+                            errorHandler.handleException(TAG, "Error updating contact", e);
                             Toast.makeText(dialogContext, "Error updating contact: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                         }
                     });
                     
                     dialog.show();
                 } catch (Exception e) {
-                    Log.e(TAG, "Error in UI thread showing edit dialog: " + e.getMessage(), e);
-                    Toast.makeText(dialogContext, "Error showing dialog: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    errorHandler.handleException(TAG, "Error showing edit contact dialog", e);
+                    Toast.makeText(pluginContext, "Error showing dialog", Toast.LENGTH_SHORT).show();
                 }
             });
         } catch (Exception e) {
-            Log.e(TAG, "Error showing edit contact dialog: " + e.getMessage(), e);
+            errorHandler.handleException(TAG, "Error showing edit contact dialog", e);
             Toast.makeText(pluginContext, "Error showing dialog", Toast.LENGTH_SHORT).show();
         }
     }
     
     /**
-     * Zeigt den Dialog zum Eingeben von Koordinaten
+     * Shows the dialog for entering coordinates
      */
     private void showCoordinatesInputDialog(CoordinatesInputListener listener) {
         try {
-            // Verwende den MapView-Kontext für den Dialog
+            // Use the MapView context for the dialog
             MapView mapView = MapView.getMapView();
             if (mapView == null) {
                 Log.e(TAG, "MapView is null");
@@ -749,30 +815,30 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                 return;
             }
             
-            // Stelle sicher, dass der Dialog auf dem UI-Thread erstellt wird
+            // Make sure the dialog is created on the UI thread
             mapView.post(() -> {
                 try {
-                    // Dialog-Layout inflaten
+                    // Inflate dialog layout
                     AlertDialog.Builder builder = new AlertDialog.Builder(dialogContext);
                     View dialogView = LayoutInflater.from(pluginContext).inflate(R.layout.dialog_coordinates_input, null);
                     builder.setView(dialogView);
                     
-                    // UI-Elemente referenzieren
+                    // Reference UI elements
                     EditText latitudeEditText = dialogView.findViewById(R.id.et_dialog_latitude);
                     EditText longitudeEditText = dialogView.findViewById(R.id.et_dialog_longitude);
                     Button cancelButton = dialogView.findViewById(R.id.btn_dialog_cancel);
                     Button saveButton = dialogView.findViewById(R.id.btn_dialog_save);
                     
-                    // Dialog erstellen
+                    // Create dialog
                     final AlertDialog dialog = builder.create();
                     
-                    // Cancel-Button
+                    // Cancel button
                     cancelButton.setOnClickListener(v -> dialog.dismiss());
                     
-                    // Save-Button
+                    // Save button
                     saveButton.setOnClickListener(v -> {
                         try {
-                            // Eingaben validieren
+                            // Validate inputs
                             String latStr = latitudeEditText.getText().toString().trim();
                             String lonStr = longitudeEditText.getText().toString().trim();
                             
@@ -784,7 +850,7 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                             double latitude = Double.parseDouble(latStr);
                             double longitude = Double.parseDouble(lonStr);
                             
-                            // Koordinaten validieren
+                            // Validate coordinates
                             if (latitude < -90 || latitude > 90) {
                                 Toast.makeText(dialogContext, "Latitude must be between -90 and 90", Toast.LENGTH_SHORT).show();
                                 return;
@@ -795,7 +861,7 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                                 return;
                             }
                             
-                            // Koordinaten zurückgeben
+                            // Return coordinates
                             listener.onCoordinatesEntered(new Double[] { latitude, longitude });
                     dialog.dismiss();
                         } catch (NumberFormatException e) {
@@ -805,22 +871,22 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
             
             dialog.show();
         } catch (Exception e) {
-                    Log.e(TAG, "Error in UI thread showing coordinates dialog: " + e.getMessage(), e);
+                    errorHandler.handleException(TAG, "Error in UI thread showing coordinates dialog", e);
                     Toast.makeText(dialogContext, "Error showing dialog: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 }
             });
         } catch (Exception e) {
-            Log.e(TAG, "Error showing coordinates input dialog: " + e.getMessage(), e);
+            errorHandler.handleException(TAG, "Error showing coordinates input dialog", e);
             Toast.makeText(pluginContext, "Error showing dialog", Toast.LENGTH_SHORT).show();
         }
     }
     
     /**
-     * Ruft den aktuellen Standort ab
+     * Gets the current location
      */
     private void getCurrentLocation() {
         try {
-            // Prüfen, ob Standortberechtigungen vorhanden sind
+            // Check if location permissions are available
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 if (ContextCompat.checkSelfPermission(pluginContext, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                     Toast.makeText(pluginContext, "Location permission not granted", Toast.LENGTH_SHORT).show();
@@ -828,7 +894,7 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                 }
             }
             
-            // Versuche, den Standort von ATAK zu bekommen
+            // Try to get location from ATAK
             MapView mapView = MapView.getMapView();
             if (mapView != null) {
                 Marker selfMarker = mapView.getSelfMarker();
@@ -841,17 +907,17 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                 }
             }
             
-            // Fallback: Versuche, den Standort vom LocationManager zu bekommen
+            // Fallback: Try to get location from LocationManager
             LocationManager locationManager = (LocationManager) pluginContext.getSystemService(Context.LOCATION_SERVICE);
             if (locationManager != null) {
                 Location lastKnownLocation = null;
                 
-                // Versuche GPS-Standort
+                // Try GPS location
                 if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
                     lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
                 }
                 
-                // Wenn GPS-Standort nicht verfügbar, versuche Netzwerk-Standort
+                // If GPS location is not available, try network location
                 if (lastKnownLocation == null && locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
                     lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
                 }
@@ -864,12 +930,12 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                 }
             }
             
-            // Kein Standort verfügbar
+            // No location available
             Toast.makeText(pluginContext, "Could not get current location", Toast.LENGTH_SHORT).show();
             tempLatitude = null;
             tempLongitude = null;
         } catch (Exception e) {
-            Log.e(TAG, "Error getting current location: " + e.getMessage(), e);
+            errorHandler.handleException(TAG, "Error getting current location", e);
             Toast.makeText(pluginContext, "Error getting current location", Toast.LENGTH_SHORT).show();
             tempLatitude = null;
             tempLongitude = null;
@@ -877,32 +943,32 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
     }
     
     /**
-     * Interface für Koordinateneingabe-Callback
+     * Interface for coordinate input callback
      */
     private interface CoordinatesInputListener {
         void onCoordinatesEntered(Double[] coordinates);
     }
     
     /**
-     * Zeigt den Dialog mit den Kontaktdetails
+     * Shows the dialog with contact details
      */
     private void showContactDetailDialog(final Contact contact) {
         try {
-            // ATAK MapView Context für Dialoge verwenden
+            // ATAK MapView Context for dialogs
             Context mapViewContext = MapView.getMapView().getContext();
             AlertDialog.Builder builder = new AlertDialog.Builder(mapViewContext);
             
-            // Dialog-View laden
+            // Load dialog view
             View dialogView = PluginLayoutInflater.inflate(pluginContext, R.layout.dialog_contact_detail, null);
             
-            // UI-Elemente initialisieren
+            // Initialize UI elements
             TextView nameView = dialogView.findViewById(R.id.tv_detail_name);
             TextView phoneView = dialogView.findViewById(R.id.tv_detail_phone);
             TextView notesView = dialogView.findViewById(R.id.tv_detail_notes);
             Button editButton = dialogView.findViewById(R.id.btn_edit);
             Button deleteButton = dialogView.findViewById(R.id.btn_delete);
             
-            // Standort-UI-Elemente
+            // Location UI elements
             LinearLayout locationLayout = dialogView.findViewById(R.id.layout_location_details);
             LinearLayout locationButtonsLayout = dialogView.findViewById(R.id.layout_location_buttons);
             TextView latitudeView = dialogView.findViewById(R.id.tv_detail_latitude);
@@ -910,59 +976,59 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
             Button showOnMapButton = dialogView.findViewById(R.id.btn_show_on_map);
             Button copyCoordinatesButton = dialogView.findViewById(R.id.btn_copy_coordinates);
             
-            // Kontaktdaten anzeigen
+            // Show contact data
             nameView.setText(contact.getName());
             phoneView.setText(contact.getPhoneNumber());
             notesView.setText(contact.getNotes());
             
-            // Dialog erstellen - vor der Verwendung in Listenern deklarieren
+            // Create dialog - declare before use in listeners
             builder.setView(dialogView);
             final AlertDialog dialog = builder.create();
             
-            // Standortdaten anzeigen, wenn vorhanden
+            // Show location data if available
             if (contact.hasLocation()) {
                 locationLayout.setVisibility(View.VISIBLE);
                 locationButtonsLayout.setVisibility(View.VISIBLE);
                 latitudeView.setText(String.valueOf(contact.getLatitude()));
                 longitudeView.setText(String.valueOf(contact.getLongitude()));
                 
-                // Langes Klicken auf Latitude zum Kopieren
+                // Long click on latitude to copy
                 latitudeView.setOnLongClickListener(v -> {
                     try {
-                        // Latitude in die Zwischenablage kopieren
+                        // Copy latitude to clipboard
                         ClipboardManager clipboard = (ClipboardManager) mapViewContext.getSystemService(Context.CLIPBOARD_SERVICE);
                         ClipData clip = ClipData.newPlainText("Latitude", String.valueOf(contact.getLatitude()));
                         clipboard.setPrimaryClip(clip);
                         
                         Toast.makeText(mapViewContext, "Latitude copied to clipboard", Toast.LENGTH_SHORT).show();
-                        return true; // Event wurde behandelt
+                        return true; // Event was handled
                     } catch (Exception e) {
-                        Log.e(TAG, "Error copying latitude: " + e.getMessage(), e);
-                        return false; // Event wurde nicht behandelt
+                        errorHandler.handleException(TAG, "Error copying latitude", e);
+                        return false; // Event was not handled
                     }
                 });
                 
-                // Langes Klicken auf Longitude zum Kopieren
+                // Long click on longitude to copy
                 longitudeView.setOnLongClickListener(v -> {
                     try {
-                        // Longitude in die Zwischenablage kopieren
+                        // Copy longitude to clipboard
                         ClipboardManager clipboard = (ClipboardManager) mapViewContext.getSystemService(Context.CLIPBOARD_SERVICE);
                         ClipData clip = ClipData.newPlainText("Longitude", String.valueOf(contact.getLongitude()));
                         clipboard.setPrimaryClip(clip);
                         
                         Toast.makeText(mapViewContext, "Longitude copied to clipboard", Toast.LENGTH_SHORT).show();
-                        return true; // Event wurde behandelt
+                        return true; // Event was handled
                     } catch (Exception e) {
-                        Log.e(TAG, "Error copying longitude: " + e.getMessage(), e);
-                        return false; // Event wurde nicht behandelt
+                        errorHandler.handleException(TAG, "Error copying longitude", e);
+                        return false; // Event was not handled
                     }
                 });
                 
-                // "Copy Coordinates"-Button
+                // "Copy Coordinates" button
                 if (copyCoordinatesButton != null) {
                     copyCoordinatesButton.setOnClickListener(v -> {
                         try {
-                            // Beide Koordinaten in die Zwischenablage kopieren
+                            // Copy both coordinates to clipboard
                             String coordinates = contact.getLatitude() + "," + contact.getLongitude();
                             ClipboardManager clipboard = (ClipboardManager) mapViewContext.getSystemService(Context.CLIPBOARD_SERVICE);
                             ClipData clip = ClipData.newPlainText("Coordinates", coordinates);
@@ -970,40 +1036,40 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                             
                             Toast.makeText(mapViewContext, "Coordinates copied to clipboard", Toast.LENGTH_SHORT).show();
                         } catch (Exception e) {
-                            Log.e(TAG, "Error copying coordinates: " + e.getMessage(), e);
+                            errorHandler.handleException(TAG, "Error copying coordinates", e);
                             Toast.makeText(mapViewContext, "Error copying coordinates", Toast.LENGTH_SHORT).show();
                         }
                     });
                 }
                 
-                // "Show on Map"-Button aktivieren
+                // "Show on Map" button activate
                 showOnMapButton.setOnClickListener(v -> {
                     try {
-                        // MapView-Instanz holen
+                        // Get MapView instance
                         MapView mapView = MapView.getMapView();
                         if (mapView != null) {
-                            // GeoPoint aus den Koordinaten erstellen
+                            // Create GeoPoint from coordinates
                             com.atakmap.coremap.maps.coords.GeoPoint point = 
                                 new com.atakmap.coremap.maps.coords.GeoPoint(
                                     contact.getLatitude(), 
                                     contact.getLongitude());
                             
-                            // Karte zu diesem Punkt bewegen
+                            // Move map to this point
                             mapView.getMapController().panTo(point, true);
                             
-                            // Optional: Zoom-Level anpassen
+                            // Optional: Adjust zoom level
                             mapView.getMapController().zoomTo(0.0002, true);
                             
-                            // Marker erstellen und zur Karte hinzufügen
+                            // Create marker and add to map
                             try {
-                                // Marker-Typ für Kontakte definieren
+                                // Define marker type for contacts
                                 String markerType = "a-f-G-U-C"; // Civilian Contact
                                 
-                                // Marker-ID generieren (Kontakt-ID + Name)
+                                // Generate marker ID (Contact ID + Name)
                                 String markerId = "contact_" + contact.getId() + "_" + 
                                     contact.getName().replaceAll("\\s+", "_");
                                 
-                                // Marker erstellen
+                                // Create marker
                                 Marker marker = new Marker(point, markerType);
                                 marker.setMetaString("callsign", contact.getName());
                                 marker.setMetaString("type", "Contact");
@@ -1014,18 +1080,18 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                                 marker.setMetaString("uid", markerId);
                                 marker.setTitle(contact.getName());
                                 
-                                // Marker zur Karte hinzufügen
+                                // Add marker to map
                                 mapView.getRootGroup().addItem(marker);
                                 
                                 Log.d(TAG, "Added marker for contact: " + contact.getName());
                             } catch (Exception e) {
-                                Log.e(TAG, "Error creating marker: " + e.getMessage(), e);
+                                errorHandler.handleException(TAG, "Error creating marker", e);
                             }
                             
-                            // Dialog schließen
+                            // Close dialog
                             dialog.dismiss();
                             
-                            // Feedback anzeigen
+                            // Show feedback
                             Toast.makeText(mapViewContext, 
                                 "Showing location for " + contact.getName(), 
                                 Toast.LENGTH_SHORT).show();
@@ -1035,66 +1101,66 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                                 Toast.LENGTH_SHORT).show();
                         }
                     } catch (Exception e) {
-                        Log.e(TAG, "Error showing location on map: " + e.getMessage(), e);
+                        errorHandler.handleException(TAG, "Error showing location on map", e);
                         Toast.makeText(mapViewContext, 
                             "Error showing location on map", 
                             Toast.LENGTH_SHORT).show();
                     }
                 });
             } else {
-                // Standortbereich ausblenden, wenn keine Daten vorhanden sind
+                // Hide location area if no data
                 locationLayout.setVisibility(View.GONE);
                 locationButtonsLayout.setVisibility(View.GONE);
             }
             
-            // Telefonnummer anklickbar machen
+            // Make phone number clickable
             phoneView.setOnClickListener(v -> {
                 try {
-                    // Telefonnummer formatieren (Leerzeichen entfernen)
+                    // Format phone number (remove spaces)
                     String phoneNumber = contact.getPhoneNumber().replaceAll("\\s+", "");
                     
-                    // Intent zum Anrufen erstellen
+                    // Create intent to call
                     Intent callIntent = new Intent(Intent.ACTION_DIAL);
                     callIntent.setData(Uri.parse("tel:" + phoneNumber));
                     
-                    // Prüfen, ob eine App den Intent behandeln kann
+                    // Check if an app can handle the intent
                     if (callIntent.resolveActivity(mapViewContext.getPackageManager()) != null) {
                         mapViewContext.startActivity(callIntent);
                     } else {
                         Toast.makeText(mapViewContext, "No app available to handle calls", Toast.LENGTH_SHORT).show();
                     }
                 } catch (Exception e) {
-                    Log.e(TAG, "Error initiating call: " + e.getMessage(), e);
+                    errorHandler.handleException(TAG, "Error initiating call", e);
                     Toast.makeText(mapViewContext, "Could not initiate call: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 }
             });
             
-            // Langes Klicken zum Kopieren der Telefonnummer
+            // Long click to copy phone number
             phoneView.setOnLongClickListener(v -> {
                 try {
-                    // Telefonnummer in die Zwischenablage kopieren
+                    // Copy phone number to clipboard
                     ClipboardManager clipboard = (ClipboardManager) mapViewContext.getSystemService(Context.CLIPBOARD_SERVICE);
                     ClipData clip = ClipData.newPlainText("Phone Number", contact.getPhoneNumber());
                     clipboard.setPrimaryClip(clip);
                     
                     Toast.makeText(mapViewContext, "Phone number copied to clipboard", Toast.LENGTH_SHORT).show();
-                    return true; // Event wurde behandelt
+                    return true; // Event was handled
                 } catch (Exception e) {
-                    Log.e(TAG, "Error copying phone number: " + e.getMessage(), e);
+                    errorHandler.handleException(TAG, "Error copying phone number", e);
                     Toast.makeText(mapViewContext, "Could not copy phone number: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                    return false; // Event wurde nicht behandelt
+                    return false; // Event was not handled
                 }
             });
             
-            // Edit-Button
+            // Edit button
             editButton.setOnClickListener(v -> {
                 dialog.dismiss();
                 showEditContactDialog(contact);
             });
             
-            // Delete-Button
+            // Delete button
             deleteButton.setOnClickListener(v -> {
-                // Bestätigungsdialog anzeigen
+                // Confirmation dialog
                 new AlertDialog.Builder(mapViewContext)
                         .setTitle("Delete Contact")
                         .setMessage("Are you sure you want to delete this contact?")
@@ -1117,7 +1183,7 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
                                     Toast.makeText(mapViewContext, "Failed to delete contact", Toast.LENGTH_SHORT).show();
                                 }
                             } catch (Exception e) {
-                                Log.e(TAG, "Error deleting contact", e);
+                                errorHandler.handleException(TAG, "Error deleting contact", e);
                                 Toast.makeText(mapViewContext, "Error deleting contact: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                             }
                         })
@@ -1127,46 +1193,46 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
             
             dialog.show();
         } catch (Exception e) {
-            Log.e(TAG, "Error showing contact detail dialog", e);
+            errorHandler.handleException(TAG, "Error showing contact detail dialog", e);
         }
     }
     
     /**
-     * Zeigt den Info-Dialog mit Versionsinformationen und Anleitung
+     * Shows the Info dialog with version information and instructions
      */
     private void showInfoDialog() {
         try {
-            // ATAK MapView Context für Dialoge verwenden
+            // ATAK MapView Context for dialogs
             Context mapViewContext = MapView.getMapView().getContext();
             AlertDialog.Builder builder = new AlertDialog.Builder(mapViewContext);
             
-            // Dialog-View laden
+            // Load dialog view
             View dialogView = PluginLayoutInflater.inflate(pluginContext, R.layout.dialog_info, null);
             
-            // UI-Elemente initialisieren
+            // Initialize UI elements
             TextView versionView = dialogView.findViewById(R.id.tv_version);
             TextView publisherView = dialogView.findViewById(R.id.tv_publisher);
             Button closeButton = dialogView.findViewById(R.id.btn_close);
             
-            // Versionsinformationen setzen
-            versionView.setText("1.2.0");
+            // Set version information
+            versionView.setText("1.2.1");
             publisherView.setText("TAKHub");
             
-            // Publisher-Link einrichten
+            // Set publisher link
             publisherView.setOnClickListener(v -> {
                 try {
-                    // URL zur TAKHub-Website
+                    // URL to TAKHub website
                     String url = "https://takhub.de/en/home/";
                     Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                     
-                    // Prüfen, ob eine App den Intent behandeln kann
+                    // Check if an app can handle the intent
                     if (browserIntent.resolveActivity(mapViewContext.getPackageManager()) != null) {
                         mapViewContext.startActivity(browserIntent);
                     } else {
                         Toast.makeText(mapViewContext, "No browser app available", Toast.LENGTH_SHORT).show();
                     }
                 } catch (Exception e) {
-                    Log.e(TAG, "Error opening website: " + e.getMessage(), e);
+                    errorHandler.handleException(TAG, "Error opening website", e);
                     Toast.makeText(mapViewContext, "Error opening website", Toast.LENGTH_SHORT).show();
                 }
             });
@@ -1174,17 +1240,17 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
             builder.setView(dialogView);
             final AlertDialog dialog = builder.create();
             
-            // Close-Button
+            // Close button
             closeButton.setOnClickListener(v -> dialog.dismiss());
             
             dialog.show();
         } catch (Exception e) {
-            Log.e(TAG, "Error showing info dialog", e);
+            errorHandler.handleException(TAG, "Error showing info dialog", e);
         }
     }
     
     /**
-     * Implementierung des ContactAdapter.OnContactClickListener Interface
+     * Implementation of ContactAdapter.OnContactClickListener Interface
      */
     @Override
     public void onContactClick(Contact contact) {
@@ -1192,38 +1258,38 @@ public class ContactManager implements ContactAdapter.OnContactClickListener {
     }
     
     /**
-     * Methode zum Zurücksetzen des Managers beim erneuten Öffnen
-     * Kann verwendet werden, um Ressourcen zu bereinigen und neu zu initialisieren
+     * Method to reset the manager when opening again
+     * Can be used to clean up and reinitialize
      */
     public void reset() {
         try {
             Log.d(TAG, "Resetting ContactManager");
             
-            // Suchfeld zurücksetzen, falls vorhanden
+            // Reset search field if available
             try {
                 EditText searchEditText = mainView.findViewById(R.id.et_search_contacts);
                 if (searchEditText != null) {
                     searchEditText.setText("");
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error resetting search field: " + e.getMessage(), e);
+                errorHandler.handleException(TAG, "Error resetting search field", e);
             }
             
-            // Kontaktliste leeren
+            // Clear contact list
             contactList.clear();
             
-            // Lade Kontakte neu (this will also reset adapter and UI)
+            // Reload contacts (this will also reset adapter and UI)
             loadContacts();
             
-            // Stelle sicher, dass die UI aktualisiert wird
+            // Ensure UI is updated
             if (adapter != null) {
                 adapter.notifyDataSetChanged();
             }
             
-            // UI-Status aktualisieren
+            // Update UI status
             updateContactsUI();
         } catch (Exception e) {
-            Log.e(TAG, "Error resetting ContactManager: " + e.getMessage(), e);
+            errorHandler.handleException(TAG, "Error resetting ContactManager", e);
         }
     }
 
