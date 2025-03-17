@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:id="@+id/header_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:orientation="horizontal"
+        android:layout_margin="8dp">
+
+        <Button
+            android:id="@+id/btn_add_contact"
+            android:layout_width="0dp"
+            android:layout_weight="0.4"
+            android:layout_height="48dp"
+            android:text="Add Contact"
+            android:textColor="#FFFFFF"
+            android:padding="12dp"
+            android:layout_marginBottom="2dp"
+            android:background="@drawable/btn_gray" />
+            
+        <EditText
+            android:id="@+id/et_search_contacts"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="0.55"
+            android:layout_marginStart="8dp"
+            android:padding="10dp"
+            android:hint="Search contacts..."
+            android:textColorHint="#AAAAAA"
+            android:textColor="#FFFFFF"
+            android:inputType="text"
+            android:maxLines="1"
+            android:background="@drawable/btn_dark"
+            android:drawableStart="@android:drawable/ic_menu_search"
+            android:drawablePadding="8dp" />
+            
+        <ImageButton
+            android:id="@+id/btn_info"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="8dp"
+            android:layout_gravity="center_vertical"
+            android:src="@android:drawable/ic_dialog_info"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Information"
+            android:padding="8dp" />
+    </LinearLayout>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rv_contacts"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@id/header_container"
+        android:layout_marginTop="8dp"
+        android:clipToPadding="false"
+        android:padding="8dp" />
+
+    <TextView
+        android:id="@+id/tv_empty_view"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:text="No contacts added yet"
+        android:textSize="18sp"
+        android:visibility="gone" />
+
+</RelativeLayout>

@@ -1,0 +1,193 @@
+package com.atakmap.android.contacts.plugin.adapter;
+
+import android.content.Context;
+import android.util.Log;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.TextView;
+
+import androidx.annotation.NonNull;
+import androidx.recyclerview.widget.RecyclerView;
+
+import com.atakmap.android.contacts.plugin.R;
+import com.atakmap.android.contacts.plugin.model.Contact;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Adapter für die Anzeige von Kontakten in einer RecyclerView
+ */
+public class ContactAdapter extends RecyclerView.Adapter<ContactAdapter.ViewHolder> {
+    
+    private static final String TAG = "ContactAdapter";
+    private final List<Contact> contactList;
+    private List<Contact> contactListFull; // Original list for filtering
+    private final Context context;
+    private final OnContactClickListener listener;
+    
+    /**
+     * Interface für Klick-Events auf Kontakte
+     */
+    public interface OnContactClickListener {
+        void onContactClick(Contact contact);
+    }
+    
+    /**
+     * ViewHolder für einen Kontakteintrag
+     */
+    public static class ViewHolder extends RecyclerView.ViewHolder {
+        public TextView nameTextView;
+        public TextView phoneTextView;
+        
+        public ViewHolder(View itemView) {
+            super(itemView);
+            nameTextView = itemView.findViewById(R.id.tv_contact_name);
+            phoneTextView = itemView.findViewById(R.id.tv_contact_phone);
+        }
+        
+        public void bind(final Contact contact, final OnContactClickListener listener) {
+            try {
+                if (contact != null) {
+                    nameTextView.setText(contact.getName());
+                    phoneTextView.setText(contact.getPhoneNumber());
+                    
+                    // Klick-Listener für den gesamten Eintrag
+                    itemView.setOnClickListener(v -> {
+                        if (listener != null) {
+                            listener.onContactClick(contact);
+                        }
+                    });
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error binding contact to view", e);
+            }
+        }
+    }
+    
+    /**
+     * Konstruktor
+     * @param context Kontext
+     * @param contactList Liste der anzuzeigenden Kontakte
+     * @param listener Click-Listener
+     */
+    public ContactAdapter(Context context, List<Contact> contactList, OnContactClickListener listener) {
+        this.context = context;
+        this.contactList = contactList;
+        this.contactListFull = new ArrayList<>(contactList); // Create a copy for filtering
+        this.listener = listener;
+    }
+    
+    @NonNull
+    @Override
+    public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        try {
+            View view = LayoutInflater.from(parent.getContext())
+                    .inflate(R.layout.item_contact, parent, false);
+            return new ViewHolder(view);
+        } catch (Exception e) {
+            Log.e(TAG, "Error creating ViewHolder", e);
+            // Fallback für den unerwarteten Fall
+            View errorView = new View(parent.getContext());
+            return new ViewHolder(errorView);
+        }
+    }
+    
+    @Override
+    public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
+        try {
+            if (position < contactList.size()) {
+                Contact contact = contactList.get(position);
+                holder.bind(contact, listener);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error binding ViewHolder at position " + position, e);
+        }
+    }
+    
+    @Override
+    public int getItemCount() {
+        return contactList != null ? contactList.size() : 0;
+    }
+    
+    /**
+     * Aktualisiert die Kontaktliste
+     * @param newContacts Neue Kontaktliste
+     */
+    public void updateContacts(List<Contact> newContacts) {
+        try {
+            Log.d(TAG, "Updating contacts list with " + 
+                 (newContacts != null ? newContacts.size() : 0) + " contacts");
+            
+            contactList.clear();
+            
+            if (newContacts != null && !newContacts.isEmpty()) {
+                contactList.addAll(newContacts);
+                contactListFull = new ArrayList<>(newContacts); // Update the full list copy
+                
+                Log.d(TAG, "Updated contactList with " + contactList.size() + 
+                     " items and contactListFull with " + contactListFull.size() + " items");
+            } else {
+                Log.d(TAG, "No contacts to update with, lists are now empty");
+                contactListFull = new ArrayList<>(); // Create empty list
+            }
+            
+            notifyDataSetChanged();
+        } catch (Exception e) {
+            Log.e(TAG, "Error updating contacts: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Filtert die Kontaktliste basierend auf dem Suchbegriff
+     * @param query Suchbegriff
+     */
+    public void filter(String query) {
+        try {
+            Log.d(TAG, "Filtering contacts with query: '" + query + "', contactList size: " + 
+                 (contactList != null ? contactList.size() : 0) + 
+                 ", full list size: " + (contactListFull != null ? contactListFull.size() : 0));
+                
+            // Make sure we have the full list to filter from
+            if (contactListFull == null || contactListFull.isEmpty()) {
+                Log.d(TAG, "contactListFull is null or empty, creating new list");
+                if (contactList != null && !contactList.isEmpty()) {
+                    contactListFull = new ArrayList<>(contactList);
+                } else {
+                    contactListFull = new ArrayList<>();
+                }
+                Log.d(TAG, "contactListFull now has " + contactListFull.size() + " items");
+            }
+            
+            // Clear the current display list
+            contactList.clear();
+            
+            if (query == null || query.isEmpty()) {
+                // If search query is empty, show all contacts
+                contactList.addAll(contactListFull);
+                Log.d(TAG, "Search cleared, showing all " + contactList.size() + " contacts");
+            } else {
+                // Convert query to lowercase for case-insensitive search
+                String lowerCaseQuery = query.toLowerCase();
+                
+                // Filter contacts by name only (simplified)
+                for (Contact contact : contactListFull) {
+                    if (contact != null && contact.getName() != null && 
+                        contact.getName().toLowerCase().contains(lowerCaseQuery)) {
+                        contactList.add(contact);
+                        Log.d(TAG, "Adding contact to filtered results: " + contact.getName());
+                    }
+                }
+                
+                Log.d(TAG, "Filtered contacts list, showing " + contactList.size() + 
+                       " results for query: " + query);
+            }
+            
+            // Always notify adapter that data has changed
+            notifyDataSetChanged();
+        } catch (Exception e) {
+            Log.e(TAG, "Error filtering contacts: " + e.getMessage(), e);
+        }
+    }
+} 
